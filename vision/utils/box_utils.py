@@ -228,6 +228,7 @@ def hard_nms(box_scores, iou_threshold, top_k=-1, candidate_size=200):
          picked: a list of indexes of the kept boxes
     """
     scores = box_scores[:, -1]
+    # print('sum',sum(scores))
     boxes = box_scores[:, :-1]
     picked = []
     _, indexes = scores.sort(descending=True)

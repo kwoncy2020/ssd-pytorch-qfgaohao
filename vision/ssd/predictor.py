@@ -35,7 +35,7 @@ class Predictor:
         with torch.no_grad():
             self.timer.start()
             scores, boxes = self.net.forward(images)
-            print("Inference time: ", self.timer.end())
+            # print("Inference time: ", self.timer.end())
         boxes = boxes[0]
         scores = scores[0]
         if not prob_threshold:
@@ -47,6 +47,7 @@ class Predictor:
         picked_labels = []
         for class_index in range(1, scores.size(1)):
             probs = scores[:, class_index]
+            # print('sum-probs', sum(scores[0]))
             mask = probs > prob_threshold
             probs = probs[mask]
             if probs.size(0) == 0:

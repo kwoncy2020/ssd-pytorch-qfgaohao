@@ -14,6 +14,7 @@ import logging
 import sys
 from vision.ssd.mobilenet_v2_ssd_lite import create_mobilenetv2_ssd_lite, create_mobilenetv2_ssd_lite_predictor
 from vision.ssd.mobilenetv3_ssd_lite import create_mobilenetv3_large_ssd_lite, create_mobilenetv3_small_ssd_lite
+import pandas as pd
 
 
 parser = argparse.ArgumentParser(description="SSD Evaluation on VOC Dataset.")
@@ -127,9 +128,11 @@ if __name__ == '__main__':
 
     class_names  = ['background', "qrcode", "barcode", "mpcode", "pdf417", "dmtx"]
     class_dict = {"qrcode":1, "barcode":2, "mpcode":3, "pdf417":4, "dmtx":5, "background": 0}
+    label2class_dict = {1:"qrcode", 2:"barcode", 3:"mpcode", 4:"pdf417", 5:"dmtx", 0:"background"}
     args.dataset = os.path.join(os.getcwd(),'jsons')
     args.net = 'mb3-small-ssd-lite'
-    args.trained_model = r"C:\kwoncy\projects\xcode-detection\pytorch-ssd\checkpoint\mb3-small-ssd-lite-Epoch-15-Loss-9.15076301574707.pth"
+    args.net = 'mb1-ssd'
+    args.trained_model = r"C:\kwoncy\projects\xcode-detection\pytorch-ssd\checkpoint\mb1-ssd-Epoch-240-Loss-5.250477349758148.pth"
     args.dataset_type = 'xcode'
 
     # args.net = 'mb3-small-ssd-lite'
@@ -199,16 +202,24 @@ if __name__ == '__main__':
         parser.print_help(sys.stderr)
         sys.exit(1)
 
+    
+    print(f"predict start with len(dataset): {len(dataset)}")
     results = []
+    image_ids = []
     for i in range(len(dataset)):
-        print("process image", i)
+    # for i in range(100):
+        # print("process image", i)
         timer.start("Load Image")
         image = dataset.get_image(i)
-        print("Load Image: {:4f} seconds.".format(timer.end("Load Image")))
+        cur_data = dataset.data[i]
+        image_id = cur_data['image_id']
+        
+        # print("Load Image: {:4f} seconds.".format(timer.end("Load Image")))
         timer.start("Predict")
         boxes, labels, probs = predictor.predict(image)
-        print("Prediction: {:4f} seconds.".format(timer.end("Predict")))
+        # print("Prediction: {:4f} seconds.".format(timer.end("Predict")))
         indexes = torch.ones(labels.size(0), 1, dtype=torch.float32) * i
+        image_ids.extend([image_id] * len(indexes))
         results.append(torch.cat([
             indexes.reshape(-1, 1),
             labels.reshape(-1, 1).float(),
@@ -216,6 +227,8 @@ if __name__ == '__main__':
             boxes + 1.0  # matlab's indexes start from 1
         ], dim=1))
     results = torch.cat(results)
+    print(f"predict done. len(dataset): {len(dataset)}")
+    print(f"making eval_txt files start")
     for class_index, class_name in enumerate(class_names):
         if class_index == 0: continue  # ignore background
         prediction_path = eval_path / f"det_test_{class_name}.txt"
@@ -228,6 +241,26 @@ if __name__ == '__main__':
                     image_id + " " + " ".join([str(v) for v in prob_box]),
                     file=f
                 )
+    print(f"making eval_txt files done.")
+
+    df = pd.DataFrame(results.numpy(force=True),columns=['Dataset_index', 'Label', 'Prob', 'Xmin', 'Ymin', 'Xmax', 'Ymax'])
+    df['Image_id'] = image_ids
+    
+    print(df.head(5))
+    df2 = df[df['Prob'] > 0.5]
+    print(df2.head(5))
+    print(len(df2))
+    prediction_path = os.path.join(os.getcwd(),'eval_results','det_test_total.txt')
+    with open(prediction_path, 'w') as f2:
+        for img_id, g in df2.groupby('Image_id'):
+            g = g.sort_values('Prob')
+            for row in g.itertuples():
+                # if row.Prob < 0.5:
+                    # continue
+                label_ = row.Label
+                class_ = label2class_dict[int(label_)]
+                print(f'{img_id} {row.Label} {class_} {row.Prob} {row.Xmin} {row.Ymin} {row.Xmax} {row.Ymax}', file=f2)
+            
     aps = []
     print("\n\nAverage Precision Per-class:")
     for class_index, class_name in enumerate(class_names):

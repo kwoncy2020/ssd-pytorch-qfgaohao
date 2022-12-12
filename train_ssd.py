@@ -173,15 +173,18 @@ if __name__ == '__main__':
     timer = Timer()
 
     args.net = 'mb3-small-ssd-lite'
+    args.net = 'mb1-ssd'
     args.checkpoint_folder = os.path.join(os.getcwd(),'checkpoint')
     args.dataset_type = 'xcode'
     args.datasets = [os.path.join(os.getcwd(),'jsons')]
-    resume_model_path = r"C:\kwoncy\projects\xcode-detection\pytorch-ssd\checkpoint\mb3-small-ssd-lite-Epoch-5-Loss-9.17269736289978-opt-loss.pth.tar"
     resume_model_path = None
+    resume_model_path = r"C:\kwoncy\projects\xcode-detection\pytorch-ssd\checkpoint\mb1-ssd-Epoch-55-Loss-5.245264191627502-opt-loss.pth.tar"
+    # args.resume = r"C:\kwoncy\projects\xcode-detection\pytorch-ssd\checkpoint\mobilenet-v1-ssd-mp-0_675.pth"
     # model_path = None
     # args.scheduler = None
-    # args.resume = r"C:\kwoncy\projects\xcode-detection\pytorch-ssd\checkpoint\mb3-small-ssd-lite-Epoch-5-Loss-9.17269736289978-opt-loss.pth.tar"
-
+    # args.base_net = r"C:\kwoncy\projects\xcode-detection\pytorch-ssd\checkpoint\mobilenet_v1_with_relu_69_5.pth"
+    args.num_epochs = 400
+    
     # args.net = 'mb3-small-ssd-lite'
     # args.checkpoint_folder = os.path.join(os.getcwd(),'checkpoint')
     # args.dataset_type = 'voc'

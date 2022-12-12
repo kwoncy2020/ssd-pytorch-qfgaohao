@@ -28,6 +28,9 @@ from vision.ssd.data_preprocessing import TrainAugmentation, TestTransform
 import torchvision.transforms.functional as FT
 import torchvision.transforms as T
 
+
+
+
 parser = argparse.ArgumentParser(
     description='Single Shot MultiBox Detector Training With Pytorch')
 
@@ -176,8 +179,8 @@ def test(loader, net, criterion, device):
 if __name__ == '__main__':
     timer = Timer()
 
-    args.net = 'mb1-ssd-lite'
     args.net = 'mb3-small-ssd-lite'
+    args.net = 'mb1-ssd-lite'
     args.checkpoint_folder = os.path.join(os.getcwd(),'checkpoint')
     args.dataset_type = 'xcode'
     args.datasets = [os.path.join(os.getcwd(),'jsons')]
@@ -352,6 +355,10 @@ if __name__ == '__main__':
     # net.load_state_dict(torch.load(r"C:\kwoncy\projects\xcode-detection\pytorch-ssd\checkpoint\mb3-small-ssd-lite-Epoch-15-Loss-9.15076301574707.pth"))
     net.to(DEVICE)
     
+    from pytorch_model_summary import summary
+
+    print(summary(net, torch.randn(1,3,300,300).to(DEVICE), show_input=True))
+
     dummy_input = torch.randn(1,3,300,300, device=DEVICE)
     torch.onnx.export(net, dummy_input,f'{args.net}-ssd300.onnx',verbose=True, opset_version=11)
 
