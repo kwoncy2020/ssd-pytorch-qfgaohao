@@ -15,6 +15,7 @@ import sys
 from vision.ssd.mobilenet_v2_ssd_lite import create_mobilenetv2_ssd_lite, create_mobilenetv2_ssd_lite_predictor
 from vision.ssd.mobilenetv3_ssd_lite import create_mobilenetv3_large_ssd_lite, create_mobilenetv3_small_ssd_lite
 import pandas as pd
+import pandas as pd
 
 
 parser = argparse.ArgumentParser(description="SSD Evaluation on VOC Dataset.")
@@ -155,6 +156,7 @@ if __name__ == '__main__':
     class_names  = ['background', "qrcode", "barcode", "mpcode", "pdf417", "dmtx"]
     class_dict = {"qrcode":1, "barcode":2, "mpcode":3, "pdf417":4, "dmtx":5, "background": 0}
     label2class_dict = {1:"qrcode", 2:"barcode", 3:"mpcode", 4:"pdf417", 5:"dmtx", 0:"background"}
+    label2class_dict = {1:"qrcode", 2:"barcode", 3:"mpcode", 4:"pdf417", 5:"dmtx", 0:"background"}
     args.dataset = os.path.join(os.getcwd(),'jsons')
     args.net = 'mb3-small-ssd-lite'
     args.net = 'mb1-ssd'
@@ -229,9 +231,14 @@ if __name__ == '__main__':
 
     
     print(f"predict start with len(dataset): {len(dataset)}")
+    
+    print(f"predict start with len(dataset): {len(dataset)}")
     results = []
     image_ids = []
+    image_ids = []
     for i in range(len(dataset)):
+    # for i in range(100):
+        # print("process image", i)
     # for i in range(100):
         # print("process image", i)
         timer.start("Load Image")
@@ -240,10 +247,16 @@ if __name__ == '__main__':
         image_id = cur_data['image_id']
         
         # print("Load Image: {:4f} seconds.".format(timer.end("Load Image")))
+        cur_data = dataset.data[i]
+        image_id = cur_data['image_id']
+        
+        # print("Load Image: {:4f} seconds.".format(timer.end("Load Image")))
         timer.start("Predict")
         boxes, labels, probs = predictor.predict(image)
         # print("Prediction: {:4f} seconds.".format(timer.end("Predict")))
+        # print("Prediction: {:4f} seconds.".format(timer.end("Predict")))
         indexes = torch.ones(labels.size(0), 1, dtype=torch.float32) * i
+        image_ids.extend([image_id] * len(indexes))
         image_ids.extend([image_id] * len(indexes))
         results.append(torch.cat([
             indexes.reshape(-1, 1),
@@ -252,6 +265,8 @@ if __name__ == '__main__':
             boxes + 1.0  # matlab's indexes start from 1
         ], dim=1))
     results = torch.cat(results)
+    print(f"predict done. len(dataset): {len(dataset)}")
+    print(f"making eval_txt files start")
     print(f"predict done. len(dataset): {len(dataset)}")
     print(f"making eval_txt files start")
     for class_index, class_name in enumerate(class_names):
