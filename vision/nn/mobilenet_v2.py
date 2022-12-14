@@ -6,7 +6,7 @@ import math
 # BatchNorm Layer is optional to make it easy do batch norm confusion.
 
 
-def conv_bn(inp, oup, stride, use_batch_norm=True, onnx_compatible=False):
+def conv_bn(inp, oup, stride, use_batch_norm=True, onnx_compatible=True):
     ReLU = nn.ReLU if onnx_compatible else nn.ReLU6
 
     if use_batch_norm:
@@ -22,7 +22,7 @@ def conv_bn(inp, oup, stride, use_batch_norm=True, onnx_compatible=False):
         )
 
 
-def conv_1x1_bn(inp, oup, use_batch_norm=True, onnx_compatible=False):
+def conv_1x1_bn(inp, oup, use_batch_norm=True, onnx_compatible=True):
     ReLU = nn.ReLU if onnx_compatible else nn.ReLU6
     if use_batch_norm:
         return nn.Sequential(
@@ -38,7 +38,7 @@ def conv_1x1_bn(inp, oup, use_batch_norm=True, onnx_compatible=False):
 
 
 class InvertedResidual(nn.Module):
-    def __init__(self, inp, oup, stride, expand_ratio, use_batch_norm=True, onnx_compatible=False):
+    def __init__(self, inp, oup, stride, expand_ratio, use_batch_norm=True, onnx_compatible=True):
         super(InvertedResidual, self).__init__()
         ReLU = nn.ReLU if onnx_compatible else nn.ReLU6
 
@@ -103,7 +103,7 @@ class InvertedResidual(nn.Module):
 
 class MobileNetV2(nn.Module):
     def __init__(self, n_class=1000, input_size=224, width_mult=1., dropout_ratio=0.2,
-                 use_batch_norm=True, onnx_compatible=False):
+                 use_batch_norm=True, onnx_compatible=True):
         super(MobileNetV2, self).__init__()
         block = InvertedResidual
         input_channel = 32

@@ -146,10 +146,12 @@ class SSD(nn.Module):
         # torch.save(self.state_dict(), model_path)
         torch.save(state, model_path)
 
-    def save3(self, epoch, optimizer, loss, model_path):
+    def save3(self, epoch, optimizer, loss, scheduler, model_path):
         state = {'epoch':epoch,\
         'optimizer_state_dict':optimizer.state_dict(), \
+        'optimizer': optimizer , \
         'model_state_dict':self.state_dict(), \
+        'scheduler':scheduler, \
         'loss': loss}
         # torch.save(self.state_dict(), model_path)
         torch.save(state, model_path)

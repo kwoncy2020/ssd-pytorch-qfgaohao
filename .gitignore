@@ -4,6 +4,8 @@ log
 models
 README-prev.md
 eval_results/
+temp2.py
+*.onnx
 
 # Pytorch Models
 *.pth
@@ -25,3 +27,6 @@ __pycache__/
 # pyenv
 .python-version
 
+# tensorboard
+runs/
+runs*/

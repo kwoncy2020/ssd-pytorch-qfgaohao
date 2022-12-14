@@ -27,6 +27,9 @@ from vision.ssd.data_preprocessing import TrainAugmentation, TestTransform
 
 import torchvision.transforms.functional as FT
 import torchvision.transforms as T
+from thop import profile, clever_format
+from flopth import flopth
+import time
 
 parser = argparse.ArgumentParser(
     description='Single Shot MultiBox Detector Training With Pytorch')
@@ -176,8 +179,9 @@ def test(loader, net, criterion, device):
 if __name__ == '__main__':
     timer = Timer()
 
-    args.net = 'mb1-ssd-lite'
     args.net = 'mb3-small-ssd-lite'
+    args.net = 'mb2-ssd-lite'
+    args.net = 'mb1-ssd'
     args.checkpoint_folder = os.path.join(os.getcwd(),'checkpoint')
     args.dataset_type = 'xcode'
     args.datasets = [os.path.join(os.getcwd(),'jsons')]
@@ -350,30 +354,45 @@ if __name__ == '__main__':
     logging.info(f'Took {timer.end("Load Model"):.2f} seconds to load the model.')
 
     # net.load_state_dict(torch.load(r"C:\kwoncy\projects\xcode-detection\pytorch-ssd\checkpoint\mb3-small-ssd-lite-Epoch-15-Loss-9.15076301574707.pth"))
+    # net.load_state_dict(torch.load(r"C:\kwoncy\projects\xcode-detection\pytorch-ssd\checkpoint\mb2-ssd-lite-Epoch-65-Loss-3.078031623363495.pth"))
     net.to(DEVICE)
     
-    dummy_input = torch.randn(1,3,300,300, device=DEVICE)
-    torch.onnx.export(net, dummy_input,f'{args.net}-ssd300.onnx',verbose=True, opset_version=11)
+    from pytorch_model_summary import summary
+    dummy_input= torch.randn(1,3,300,300).to(DEVICE)
+    print(summary(net, dummy_input, show_input=True))
+    macs, params = profile(net, inputs=(dummy_input,))
+    macs, params = clever_format([macs,params], "%.3f")
+    print('thop macs: ',macs)
+    print('thop params: ', params)
+    flops, params = flopth(net, inputs=(dummy_input,))
+    print('flopth flops: ', flops)
+    print('flopth params: ', params)
 
-    criterion = MultiboxLoss(config.priors, iou_threshold=0.5, neg_pos_ratio=3,
-                             center_variance=0.1, size_variance=0.2, device=DEVICE)
-    optimizer = torch.optim.SGD(params, lr=args.lr, momentum=args.momentum,
-                                weight_decay=args.weight_decay)
-    logging.info(f"Learning rate: {args.lr}, Base net learning rate: {base_net_lr}, "
-                 + f"Extra Layers learning rate: {extra_layers_lr}.")
+    start_time = time.time()
+    _ = net(dummy_input)
+    print('time: ', time.time()-start_time)
 
-    if args.scheduler == 'multi-step':
-        logging.info("Uses MultiStepLR scheduler.")
-        milestones = [int(v.strip()) for v in args.milestones.split(",")]
-        scheduler = MultiStepLR(optimizer, milestones=milestones,
-                                                     gamma=0.1, last_epoch=last_epoch)
-    elif args.scheduler == 'cosine':
-        logging.info("Uses CosineAnnealingLR scheduler.")
-        scheduler = CosineAnnealingLR(optimizer, args.t_max, last_epoch=last_epoch)
-    else:
-        logging.fatal(f"Unsupported Scheduler: {args.scheduler}.")
-        parser.print_help(sys.stderr)
-        sys.exit(1)
+    # torch.onnx.export(net, dummy_input,f'{args.net}-ssd300.onnx',verbose=True, opset_version=11)
+
+    # criterion = MultiboxLoss(config.priors, iou_threshold=0.5, neg_pos_ratio=3,
+    #                          center_variance=0.1, size_variance=0.2, device=DEVICE)
+    # optimizer = torch.optim.SGD(params, lr=args.lr, momentum=args.momentum,
+    #                             weight_decay=args.weight_decay)
+    # logging.info(f"Learning rate: {args.lr}, Base net learning rate: {base_net_lr}, "
+    #              + f"Extra Layers learning rate: {extra_layers_lr}.")
+
+    # if args.scheduler == 'multi-step':
+    #     logging.info("Uses MultiStepLR scheduler.")
+    #     milestones = [int(v.strip()) for v in args.milestones.split(",")]
+    #     scheduler = MultiStepLR(optimizer, milestones=milestones,
+    #                                                  gamma=0.1, last_epoch=last_epoch)
+    # elif args.scheduler == 'cosine':
+    #     logging.info("Uses CosineAnnealingLR scheduler.")
+    #     scheduler = CosineAnnealingLR(optimizer, args.t_max, last_epoch=last_epoch)
+    # else:
+    #     logging.fatal(f"Unsupported Scheduler: {args.scheduler}.")
+    #     parser.print_help(sys.stderr)
+    #     sys.exit(1)
 
 
 

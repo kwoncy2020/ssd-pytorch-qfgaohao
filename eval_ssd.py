@@ -14,6 +14,7 @@ import logging
 import sys
 from vision.ssd.mobilenet_v2_ssd_lite import create_mobilenetv2_ssd_lite, create_mobilenetv2_ssd_lite_predictor
 from vision.ssd.mobilenetv3_ssd_lite import create_mobilenetv3_large_ssd_lite, create_mobilenetv3_small_ssd_lite
+import pandas as pd
 
 
 parser = argparse.ArgumentParser(description="SSD Evaluation on VOC Dataset.")
@@ -120,6 +121,32 @@ def compute_average_precision_per_class(num_true_cases, gt_boxes, difficult_case
         return measurements.compute_average_precision(precision, recall)
 
 
+def get_class_ap_dict(class_names:list) -> dict:
+    print("\n\nAverage Precision Per-class:")
+    class_ap_dict = {}
+    for class_index, class_name in enumerate(class_names):
+        if class_index == 0:
+            continue
+        prediction_path = eval_path / f"det_test_{class_name}.txt"
+        ap = compute_average_precision_per_class(
+            true_case_stat[class_index],
+            all_gb_boxes[class_index],
+            all_difficult_cases[class_index],
+            prediction_path,
+            args.iou_threshold,
+            args.use_2007_metric
+        )
+        class_ap_dict[class_name] = ap
+        aps.append(ap)
+        print(f"{class_name}: {ap}")
+
+    total_mAP = sum(aps)/len(aps)
+    class_ap_dict['total'] = total_mAP 
+    print(f"\nAverage Precision Across All Classes:{total_mAP}")
+
+    return class_ap_dict
+
+
 if __name__ == '__main__':
     eval_path = pathlib.Path(args.eval_dir)
     eval_path.mkdir(exist_ok=True)
@@ -127,9 +154,12 @@ if __name__ == '__main__':
 
     class_names  = ['background', "qrcode", "barcode", "mpcode", "pdf417", "dmtx"]
     class_dict = {"qrcode":1, "barcode":2, "mpcode":3, "pdf417":4, "dmtx":5, "background": 0}
+    label2class_dict = {1:"qrcode", 2:"barcode", 3:"mpcode", 4:"pdf417", 5:"dmtx", 0:"background"}
     args.dataset = os.path.join(os.getcwd(),'jsons')
     args.net = 'mb3-small-ssd-lite'
-    args.trained_model = r"C:\kwoncy\projects\xcode-detection\pytorch-ssd\checkpoint\mb3-small-ssd-lite-Epoch-15-Loss-9.15076301574707.pth"
+    args.net = 'mb1-ssd'
+    args.net = 'mb2-ssd-lite'
+    args.trained_model = r"C:\kwoncy\projects\xcode-detection\pytorch-ssd\checkpoint\mb2-ssd-lite-Epoch-65-Loss-3.078031623363495.pth"
     args.dataset_type = 'xcode'
 
     # args.net = 'mb3-small-ssd-lite'
@@ -145,8 +175,6 @@ if __name__ == '__main__':
     # args.num_epochs = 200
     # args.scheduler = 'cosine'
     # args.lr = 0.01
-
-
 
 
     if args.dataset_type == "voc":
@@ -199,16 +227,24 @@ if __name__ == '__main__':
         parser.print_help(sys.stderr)
         sys.exit(1)
 
+    
+    print(f"predict start with len(dataset): {len(dataset)}")
     results = []
+    image_ids = []
     for i in range(len(dataset)):
-        print("process image", i)
+    # for i in range(100):
+        # print("process image", i)
         timer.start("Load Image")
         image = dataset.get_image(i)
-        print("Load Image: {:4f} seconds.".format(timer.end("Load Image")))
+        cur_data = dataset.data[i]
+        image_id = cur_data['image_id']
+        
+        # print("Load Image: {:4f} seconds.".format(timer.end("Load Image")))
         timer.start("Predict")
         boxes, labels, probs = predictor.predict(image)
-        print("Prediction: {:4f} seconds.".format(timer.end("Predict")))
+        # print("Prediction: {:4f} seconds.".format(timer.end("Predict")))
         indexes = torch.ones(labels.size(0), 1, dtype=torch.float32) * i
+        image_ids.extend([image_id] * len(indexes))
         results.append(torch.cat([
             indexes.reshape(-1, 1),
             labels.reshape(-1, 1).float(),
@@ -216,6 +252,8 @@ if __name__ == '__main__':
             boxes + 1.0  # matlab's indexes start from 1
         ], dim=1))
     results = torch.cat(results)
+    print(f"predict done. len(dataset): {len(dataset)}")
+    print(f"making eval_txt files start")
     for class_index, class_name in enumerate(class_names):
         if class_index == 0: continue  # ignore background
         prediction_path = eval_path / f"det_test_{class_name}.txt"
@@ -228,21 +266,24 @@ if __name__ == '__main__':
                     image_id + " " + " ".join([str(v) for v in prob_box]),
                     file=f
                 )
-    aps = []
-    print("\n\nAverage Precision Per-class:")
-    for class_index, class_name in enumerate(class_names):
-        if class_index == 0:
-            continue
-        prediction_path = eval_path / f"det_test_{class_name}.txt"
-        ap = compute_average_precision_per_class(
-            true_case_stat[class_index],
-            all_gb_boxes[class_index],
-            all_difficult_cases[class_index],
-            prediction_path,
-            args.iou_threshold,
-            args.use_2007_metric
-        )
-        aps.append(ap)
-        print(f"{class_name}: {ap}")
+    print(f"making eval_txt files done.")
 
-    print(f"\nAverage Precision Across All Classes:{sum(aps)/len(aps)}")
+    df = pd.DataFrame(results.numpy(force=True),columns=['Dataset_index', 'Label', 'Prob', 'Xmin', 'Ymin', 'Xmax', 'Ymax'])
+    df['Image_id'] = image_ids
+    
+
+    df2 = df[df['Prob'] > 0.5]
+
+    prediction_path = os.path.join(os.getcwd(),'eval_results','det_test_total.txt')
+    with open(prediction_path, 'w') as f2:
+        for img_id, g in df2.groupby('Image_id'):
+            g = g.sort_values('Prob')
+            for row in g.itertuples():
+                # if row.Prob < 0.5:
+                    # continue
+                label_ = row.Label
+                class_ = label2class_dict[int(label_)]
+                print(f'{img_id} {row.Label} {class_} {row.Prob} {row.Xmin} {row.Ymin} {row.Xmax} {row.Ymax}', file=f2)
+            
+    aps = []
+    get_class_ap_dict(class_names)

@@ -7,7 +7,8 @@ import itertools
 import torch
 from torch.utils.data import DataLoader, ConcatDataset
 from torch.optim.lr_scheduler import CosineAnnealingLR, MultiStepLR
-
+from torch.utils.tensorboard import SummaryWriter
+tb_writer = SummaryWriter()
 from vision.utils.misc import str2bool, Timer, freeze_net_layers, store_labels
 from vision.ssd.ssd import MatchPrior
 from vision.ssd.vgg_ssd import create_vgg_ssd
@@ -23,6 +24,8 @@ from vision.ssd.config import vgg_ssd_config
 from vision.ssd.config import mobilenetv1_ssd_config
 from vision.ssd.config import squeezenet_ssd_config
 from vision.ssd.data_preprocessing import TrainAugmentation, TestTransform
+from eval_ssd import get_class_ap_dict
+
 
 parser = argparse.ArgumentParser(
     description='Single Shot MultiBox Detector Training With Pytorch')
@@ -108,7 +111,7 @@ if args.use_cuda and torch.cuda.is_available():
     logging.info("Use Cuda.")
 
 
-def train(loader, net, criterion, optimizer, device, debug_steps=100, epoch=-1):
+def train(loader, net, criterion, optimizer, device, debug_steps=100, epoch=-1, tb_writer:SummaryWriter=None):
     net.train(True)
     running_loss = 0.0
     running_regression_loss = 0.0
@@ -125,11 +128,11 @@ def train(loader, net, criterion, optimizer, device, debug_steps=100, epoch=-1):
         loss = regression_loss + classification_loss
         loss.backward()
         optimizer.step()
-        scheduler.step()   ### added
 
         running_loss += loss.item()
         running_regression_loss += regression_loss.item()
         running_classification_loss += classification_loss.item()
+
         if i and i % debug_steps == 0:
             avg_loss = running_loss / debug_steps
             avg_reg_loss = running_regression_loss / debug_steps
@@ -144,7 +147,11 @@ def train(loader, net, criterion, optimizer, device, debug_steps=100, epoch=-1):
             running_regression_loss = 0.0
             running_classification_loss = 0.0
 
-
+    tb_writer.add_scalar("total_loss/train", loss, epoch)
+    tb_writer.add_scalar("regression_loss/train", regression_loss, epoch)
+    tb_writer.add_scalar("classification_loss/train", classification_loss, epoch)
+    tb_writer.add_scalar("lr-SGD/train", optimizer.param_groups[1]['lr'], epoch)
+        
 def test(loader, net, criterion, device):
     net.eval()
     running_loss = 0.0
@@ -173,15 +180,20 @@ if __name__ == '__main__':
     timer = Timer()
 
     args.net = 'mb3-small-ssd-lite'
+    args.net = 'mb1-ssd'
+    args.net = 'mb2-ssd-lite'
     args.checkpoint_folder = os.path.join(os.getcwd(),'checkpoint')
     args.dataset_type = 'xcode'
     args.datasets = [os.path.join(os.getcwd(),'jsons')]
-    resume_model_path = r"C:\kwoncy\projects\xcode-detection\pytorch-ssd\checkpoint\mb3-small-ssd-lite-Epoch-5-Loss-9.17269736289978-opt-loss.pth.tar"
     resume_model_path = None
+    # resume_model_path = r"C:\kwoncy\projects\xcode-detection\pytorch-ssd\checkpoint\mb2-ssd-lite-Epoch-65-Loss-3.078031623363495-opt-loss.pth.tar"
+    # args.resume = r"C:\kwoncy\projects\xcode-detection\pytorch-ssd\checkpoint\mobilenet-v1-ssd-mp-0_675.pth"
     # model_path = None
     # args.scheduler = None
-    # args.resume = r"C:\kwoncy\projects\xcode-detection\pytorch-ssd\checkpoint\mb3-small-ssd-lite-Epoch-5-Loss-9.17269736289978-opt-loss.pth.tar"
-
+    # args.base_net = r"C:\kwoncy\projects\xcode-detection\pytorch-ssd\checkpoint\mobilenet_v1_with_relu_69_5.pth"
+    args.base_net = r"C:\kwoncy\projects\xcode-detection\pytorch-ssd\checkpoint\mb2-imagenet-71_8.pth"
+    args.num_epochs = 400
+    
     # args.net = 'mb3-small-ssd-lite'
     # args.checkpoint_folder = os.path.join(os.getcwd(),'checkpoint')
     # args.dataset_type = 'voc'
@@ -352,10 +364,11 @@ if __name__ == '__main__':
     else:
         min_loss = -10000.0
         last_epoch = -1
+        optimizer = torch.optim.SGD(params, lr=args.lr, momentum=args.momentum,
+                                weight_decay=args.weight_decay)
         criterion = MultiboxLoss(config.priors, iou_threshold=0.5, neg_pos_ratio=3,
                                 center_variance=0.1, size_variance=0.2, device=DEVICE)
-        optimizer = torch.optim.SGD(params, lr=args.lr, momentum=args.momentum,
-                                    weight_decay=args.weight_decay)
+    
     logging.info(f"Learning rate: {args.lr}, Base net learning rate: {base_net_lr}, "
                  + f"Extra Layers learning rate: {extra_layers_lr}.")
 
@@ -376,11 +389,20 @@ if __name__ == '__main__':
     for epoch in range(last_epoch + 1, args.num_epochs):
         # scheduler.step()
         train(train_loader, net, criterion, optimizer,
-              device=DEVICE, debug_steps=args.debug_steps, epoch=epoch)
-        
-        
+              device=DEVICE, debug_steps=args.debug_steps, epoch=epoch, tb_writer = tb_writer)
+        scheduler.step()   ### added
+        tb_writer.add_scalar("lr-scheduler/train", scheduler.get_last_lr()[1], epoch)
+
         if epoch % args.validation_epochs == 0 or epoch == args.num_epochs - 1:
             val_loss, val_regression_loss, val_classification_loss = test(val_loader, net, criterion, DEVICE)
+            tb_writer.add_scalar('total_loss/val', val_loss)
+            tb_writer.add_scalar('regression_loss/val', val_regression_loss)
+            tb_writer.add_scalar('classification_loss/val', val_classification_loss)
+            
+            ap_dict = get_class_ap_dict(['background', "qrcode", "barcode", "mpcode", "pdf417", "dmtx"])
+            map(lambda k,v : tb_writer.add_scalar(f'{k}-mAP',v), list(ap_dict.items()))
+
+
             logging.info(
                 f"Epoch: {epoch}, " +
                 f"Validation Loss: {val_loss:.4f}, " +
@@ -396,7 +418,7 @@ if __name__ == '__main__':
             except Exception as e:
                 print(f'torch.save exception ({e})')
             try:
-                net.save3(epoch,optimizer,criterion,model_path3)
+                net.save3(epoch, optimizer, criterion, scheduler, model_path3)
             except Exception as e:
                 print(f'torch.save exception ({e})')
             logging.info(f"Saved model {model_path}")

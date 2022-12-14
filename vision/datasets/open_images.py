@@ -183,6 +183,9 @@ class OpenImagesDataset3:
         annotations = pd.read_csv(annotation_file)
         # class_names = ['BACKGROUND'] + sorted(list(annotations['ClassName'].unique()))
         # class_dict = {class_name: i for i, class_name in enumerate(class_names)}
+        class_names  = ['background', "qrcode", "barcode", "mpcode", "pdf417", "dmtx"]
+        class_dict = {"qrcode":1, "barcode":2, "mpcode":3, "pdf417":4, "dmtx":5, "background": 0}
+        
         data = []
         for image_id, group in annotations.groupby("ImageID"):
             boxes = group.loc[:, ["XMin", "YMin", "XMax", "YMax"]].values.astype(np.float32)
@@ -193,9 +196,6 @@ class OpenImagesDataset3:
                 'boxes': boxes,
                 'labels': labels
             })
-        
-        class_names  = ['background', "qrcode", "barcode", "mpcode", "pdf417", "dmtx"]
-        class_dict = {"qrcode":1, "barcode":2, "mpcode":3, "pdf417":4, "dmtx":5, "background": 0}
         
         return data, class_names, class_dict
 
