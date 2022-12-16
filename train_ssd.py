@@ -24,8 +24,8 @@ from vision.ssd.config import vgg_ssd_config
 from vision.ssd.config import mobilenetv1_ssd_config
 from vision.ssd.config import squeezenet_ssd_config
 from vision.ssd.data_preprocessing import TrainAugmentation, TestTransform
-from eval_ssd import get_class_ap_dict
-
+from eval_ssd import get_class_ap_dict, make_predicted_txt
+from custom_lr import CosineAnnealingWarmUpRestarts
 
 parser = argparse.ArgumentParser(
     description='Single Shot MultiBox Detector Training With Pytorch')
@@ -54,9 +54,9 @@ parser.add_argument('--lr', '--learning-rate', default=1e-3, type=float,
                     help='initial learning rate')
 parser.add_argument('--momentum', default=0.9, type=float,
                     help='Momentum value for optim')
-parser.add_argument('--weight_decay', default=5e-4, type=float,
+parser.add_argument('--weight_decay', default=5e-3, type=float,
                     help='Weight decay for SGD')
-parser.add_argument('--gamma', default=0.1, type=float,
+parser.add_argument('--gamma', default=0.2, type=float,
                     help='Gamma update for SGD')
 parser.add_argument('--base_net_lr', default=None, type=float,
                     help='initial learning rate for base net.')
@@ -76,7 +76,7 @@ parser.add_argument('--scheduler', default="multi-step", type=str,
                     help="Scheduler for SGD. It can one of multi-step and cosine")
 
 # Params for Multi-step Scheduler
-parser.add_argument('--milestones', default="80,100", type=str,
+parser.add_argument('--milestones', default="40,60", type=str,
                     help="milestones for MultiStepLR")
 
 # Params for Cosine Annealing
@@ -84,7 +84,7 @@ parser.add_argument('--t_max', default=120, type=float,
                     help='T_max value for Cosine Annealing Scheduler.')
 
 # Train params
-parser.add_argument('--batch_size', default=32, type=int,
+parser.add_argument('--batch_size', default=64, type=int,
                     help='Batch size for training')
 parser.add_argument('--num_epochs', default=120, type=int,
                     help='the number epochs')
@@ -150,7 +150,7 @@ def train(loader, net, criterion, optimizer, device, debug_steps=100, epoch=-1, 
     tb_writer.add_scalar("total_loss/train", loss, epoch)
     tb_writer.add_scalar("regression_loss/train", regression_loss, epoch)
     tb_writer.add_scalar("classification_loss/train", classification_loss, epoch)
-    tb_writer.add_scalar("lr-SGD/train", optimizer.param_groups[1]['lr'], epoch)
+
         
 def test(loader, net, criterion, device):
     net.eval()
@@ -186,12 +186,13 @@ if __name__ == '__main__':
     args.dataset_type = 'xcode'
     args.datasets = [os.path.join(os.getcwd(),'jsons')]
     resume_model_path = None
+    args.lr = 1e-7
     # resume_model_path = r"C:\kwoncy\projects\xcode-detection\pytorch-ssd\checkpoint\mb2-ssd-lite-Epoch-65-Loss-3.078031623363495-opt-loss.pth.tar"
     # args.resume = r"C:\kwoncy\projects\xcode-detection\pytorch-ssd\checkpoint\mobilenet-v1-ssd-mp-0_675.pth"
     # model_path = None
     # args.scheduler = None
     # args.base_net = r"C:\kwoncy\projects\xcode-detection\pytorch-ssd\checkpoint\mobilenet_v1_with_relu_69_5.pth"
-    args.base_net = r"C:\kwoncy\projects\xcode-detection\pytorch-ssd\checkpoint\mb2-imagenet-71_8.pth"
+    args.base_net = r"C:\kwoncy\projects\xcode-detection\pytorch-ssd\checkpoint\pretrained\mb2-imagenet-71_8.pth"
     args.num_epochs = 400
     
     # args.net = 'mb3-small-ssd-lite'
@@ -357,6 +358,8 @@ if __name__ == '__main__':
         checkpoint = torch.load(resume_model_path)
         optimizer = torch.optim.SGD(params, lr=args.lr, momentum=args.momentum,
                                     weight_decay=args.weight_decay)
+        # optimizer = torch.optim.Adam(net.parameters(), lr = 0)
+        # optimizer = torch.optim.Adam(params, lr = 1e-6)
         last_epoch = checkpoint['epoch']
         net.load_state_dict(checkpoint['model_state_dict'])
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
@@ -366,6 +369,7 @@ if __name__ == '__main__':
         last_epoch = -1
         optimizer = torch.optim.SGD(params, lr=args.lr, momentum=args.momentum,
                                 weight_decay=args.weight_decay)
+        # optimizer = torch.optim.Adam(params, lr = 0)
         criterion = MultiboxLoss(config.priors, iou_threshold=0.5, neg_pos_ratio=3,
                                 center_variance=0.1, size_variance=0.2, device=DEVICE)
     
@@ -375,8 +379,10 @@ if __name__ == '__main__':
     if args.scheduler == 'multi-step':
         logging.info("Uses MultiStepLR scheduler.")
         milestones = [int(v.strip()) for v in args.milestones.split(",")]
-        scheduler = MultiStepLR(optimizer, milestones=milestones,
-                                                     gamma=0.1, last_epoch=last_epoch)
+        scheduler = CosineAnnealingWarmUpRestarts(optimizer, T_0=10, T_mult=2, eta_max=0.01,  T_up=1, gamma=0.5, last_epoch=last_epoch)
+        # scheduler = CosineAnnealingWarmUpRestarts(optimizer, T_0=40, T_mult=2, eta_max=0.01,  T_up=1, gamma=0.01, last_epoch=last_epoch)
+        # scheduler = MultiStepLR(optimizer, milestones=milestones,
+                                                    #  gamma=0.1, last_epoch=last_epoch)
     elif args.scheduler == 'cosine':
         logging.info("Uses CosineAnnealingLR scheduler.")
         scheduler = CosineAnnealingLR(optimizer, args.t_max, last_epoch=last_epoch)
@@ -391,17 +397,28 @@ if __name__ == '__main__':
         train(train_loader, net, criterion, optimizer,
               device=DEVICE, debug_steps=args.debug_steps, epoch=epoch, tb_writer = tb_writer)
         scheduler.step()   ### added
-        tb_writer.add_scalar("lr-scheduler/train", scheduler.get_last_lr()[1], epoch)
+        lr_ = scheduler.get_lr()
+        last_lr = lr_
+        if isinstance(lr_, list):
+            last_lr = lr_[0]
+        
+        tb_writer.add_scalar("lr-scheduler/train", last_lr, epoch)
 
         if epoch % args.validation_epochs == 0 or epoch == args.num_epochs - 1:
             val_loss, val_regression_loss, val_classification_loss = test(val_loader, net, criterion, DEVICE)
-            tb_writer.add_scalar('total_loss/val', val_loss)
-            tb_writer.add_scalar('regression_loss/val', val_regression_loss)
-            tb_writer.add_scalar('classification_loss/val', val_classification_loss)
-            
-            ap_dict = get_class_ap_dict(['background', "qrcode", "barcode", "mpcode", "pdf417", "dmtx"])
-            map(lambda k,v : tb_writer.add_scalar(f'{k}-mAP',v), list(ap_dict.items()))
+            tb_writer.add_scalar('total_loss/val', val_loss, epoch)
+            tb_writer.add_scalar('regression_loss/val', val_regression_loss, epoch)
+            tb_writer.add_scalar('classification_loss/val', val_classification_loss, epoch)
 
+            eval_path = os.path.join(os.getcwd(),'eval_results')
+            test_dataset = OpenImagesDataset3(os.path.join(os.getcwd(),'jsons'), dataset_type="test")
+            class_names  = ['background', "qrcode", "barcode", "mpcode", "pdf417", "dmtx"]
+            # make_predicted_txt(eval_path, test_dataset, class_names, model = net, pretrained_model_path=r"C:\kwoncy\projects\xcode-detection\pytorch-ssd\checkpoint\mb2-ssd-lite-with-weight-e75\mb2-ssd-lite-Epoch-75-Loss-3.0867494797706603.pth")
+            if epoch != 0:
+                make_predicted_txt(eval_path, test_dataset, class_names, model_state_dict=net.state_dict())
+                ap_dict = get_class_ap_dict(eval_path, test_dataset, class_names)
+                list(map(lambda k,v,e : tb_writer.add_scalar(f'{k}-mAP', v, e), ap_dict.keys(), ap_dict.values(), [epoch] * len(ap_dict)))
+                
 
             logging.info(
                 f"Epoch: {epoch}, " +

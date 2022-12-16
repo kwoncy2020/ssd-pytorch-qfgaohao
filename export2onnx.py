@@ -179,6 +179,9 @@ def test(loader, net, criterion, device):
 if __name__ == '__main__':
     timer = Timer()
 
+    class_names  = ['background', "qrcode", "barcode", "mpcode", "pdf417", "dmtx"]
+    class_dict = {"qrcode":1, "barcode":2, "mpcode":3, "pdf417":4, "dmtx":5, "background": 0}
+    label2class_dict = {1:"qrcode", 2:"barcode", 3:"mpcode", 4:"pdf417", 5:"dmtx", 0:"background"}
     args.net = 'mb3-small-ssd-lite'
     args.net = 'mb2-ssd-lite'
     args.net = 'mb1-ssd'
@@ -186,7 +189,9 @@ if __name__ == '__main__':
     args.dataset_type = 'xcode'
     args.datasets = [os.path.join(os.getcwd(),'jsons')]
     # model_path = r"C:\kwoncy\projects\xcode-detection\pytorch-ssd\checkpoint\mb3-small-ssd-lite-Epoch-50-Loss-6.65807689583105.pth"
-    model_path = None
+
+    pretrained_model_path = None
+
     # args.scheduler = None
     # args.resume = r"C:\kwoncy\projects\xcode-detection\pytorch-ssd\checkpoint\mb3-small-ssd-lite-Epoch-50-Loss-6.65807689583105.pth"
 
@@ -203,107 +208,47 @@ if __name__ == '__main__':
 
     logging.info(args)
     if args.net == 'vgg16-ssd':
-        create_net = create_vgg_ssd
-        config = vgg_ssd_config
+        net = create_vgg_ssd(len(class_names), is_test=True)
     elif args.net == 'mb1-ssd':
-        create_net = create_mobilenetv1_ssd
-        config = mobilenetv1_ssd_config
+        net = create_mobilenetv1_ssd(len(class_names), is_test=True)
     elif args.net == 'mb1-ssd-lite':
-        create_net = create_mobilenetv1_ssd_lite
-        config = mobilenetv1_ssd_config
+        net = create_mobilenetv1_ssd_lite(len(class_names), is_test=True)
     elif args.net == 'sq-ssd-lite':
-        create_net = create_squeezenet_ssd_lite
-        config = squeezenet_ssd_config
+        net = create_squeezenet_ssd_lite(len(class_names), is_test=True)
     elif args.net == 'mb2-ssd-lite':
-        create_net = lambda num: create_mobilenetv2_ssd_lite(num, width_mult=args.mb2_width_mult)
-        config = mobilenetv1_ssd_config
+        net = create_mobilenetv2_ssd_lite(len(class_names), width_mult=args.mb2_width_mult, is_test=True)
     elif args.net == 'mb3-large-ssd-lite':
-        create_net = lambda num: create_mobilenetv3_large_ssd_lite(num)
-        config = mobilenetv1_ssd_config
+        net = create_mobilenetv3_large_ssd_lite(len(class_names), is_test=True)
     elif args.net == 'mb3-small-ssd-lite':
-        create_net = lambda num: create_mobilenetv3_small_ssd_lite(num)
-        config = mobilenetv1_ssd_config
+        net = create_mobilenetv3_small_ssd_lite(len(class_names), is_test=True)
     else:
-        logging.fatal("The net type is wrong.")
+        logging.fatal("The net type is wrong. It should be one of vgg16-ssd, mb1-ssd and mb1-ssd-lite.")
         parser.print_help(sys.stderr)
         sys.exit(1)
-    train_transform = TrainAugmentation(config.image_size, config.image_mean, config.image_std)
-    target_transform = MatchPrior(config.priors, config.center_variance,
-                                  config.size_variance, 0.5)
 
-    test_transform = TestTransform(config.image_size, config.image_mean, config.image_std)
+    timer.start("Load Model")
+    if pretrained_model_path:
+        # net.load(args.trained_model)
+        net.load(pretrained_model_path)
+    
+    # net.load_state_dict(torch.load(r"C:\kwoncy\projects\xcode-detection\pytorch-ssd\checkpoint\mb3-small-ssd-lite-Epoch-15-Loss-9.15076301574707.pth"))
+    # net.load_state_dict(torch.load(r"C:\kwoncy\projects\xcode-detection\pytorch-ssd\checkpoint\mb2-ssd-lite-Epoch-65-Loss-3.078031623363495.pth"))
+    net.to(DEVICE)
+    
+    from pytorch_model_summary import summary
+    dummy_input= torch.randn(1,3,300,300).to(DEVICE)
+    print(summary(net, dummy_input, show_input=True))
+    macs, params = profile(net, inputs=(dummy_input,))
+    macs, params = clever_format([macs,params], "%.3f")
+    print('thop macs: ',macs)
+    print('thop params: ', params)
+    flops, params = flopth(net, inputs=(dummy_input,))
+    print('flopth flops: ', flops)
+    print('flopth params: ', params)
 
-    logging.info("Prepare training datasets.")
-    datasets = []
-    for dataset_path in args.datasets:
-        if args.dataset_type == 'voc':
-            dataset = VOCDataset(dataset_path, transform=train_transform,
-                                 target_transform=target_transform)
-            label_file = os.path.join(args.checkpoint_folder, "voc-model-labels.txt")
-            store_labels(label_file, dataset.class_names)
-            num_classes = len(dataset.class_names)
-        elif args.dataset_type == 'open_images':
-            dataset = OpenImagesDataset(dataset_path,
-                 transform=train_transform, target_transform=target_transform,
-                 dataset_type="train", balance_data=args.balance_data)
-            label_file = os.path.join(args.checkpoint_folder, "open-images-model-labels.txt")
-            store_labels(label_file, dataset.class_names)
-            logging.info(dataset)
-            num_classes = len(dataset.class_names)
-        elif args.dataset_type == 'xcode':
-            # dataset = OpenImagesDataset2(dataset_path,
-            dataset = OpenImagesDataset3(dataset_path,
-                 transform=train_transform, target_transform=target_transform,
-                 dataset_type="train", balance_data=args.balance_data)
-            label_file = os.path.join(args.checkpoint_folder, "open-images-model-labels.txt")
-            store_labels(label_file, dataset.class_names)
-            logging.info(dataset)
-            num_classes = len(dataset.class_names)
-
-        else:
-            raise ValueError(f"Dataset type {args.dataset_type} is not supported.")
-        datasets.append(dataset)
-
-    # logging.info(f"Stored labels into file {label_file}.")
-    # train_dataset = ConcatDataset(datasets)
-    # logging.info("Train dataset size: {}".format(len(train_dataset)))
-    # train_loader = DataLoader(train_dataset, args.batch_size,
-    #                           num_workers=args.num_workers,
-    #                           shuffle=True)
-    train_loader = DataLoader(dataset, args.batch_size,
-                              num_workers=args.num_workers,
-                              shuffle=True)
-
-
-    logging.info("Prepare Validation datasets.")
-    if args.dataset_type == "voc":
-        val_dataset = VOCDataset(args.validation_dataset, transform=test_transform,
-                                 target_transform=target_transform, is_test=True)
-    elif args.dataset_type == 'open_images':
-        val_dataset = OpenImagesDataset(dataset_path,
-                                        transform=test_transform, target_transform=target_transform,
-                                        dataset_type="test")
-    elif args.dataset_type == 'xcode':
-        # val_dataset = OpenImagesDataset2(dataset_path,
-        val_dataset = OpenImagesDataset3(os.path.join(os.getcwd(),'jsons'),
-                                        transform=test_transform, target_transform=target_transform,
-                                        dataset_type="val")
-        logging.info(val_dataset)
-    logging.info("validation dataset size: {}".format(len(val_dataset)))
-
-    val_loader = DataLoader(val_dataset, args.batch_size,
-                            num_workers=args.num_workers,
-                            shuffle=False)
-    logging.info("Build network.")
-    if model_path != None:
-        checkpoint = torch.load(model_path)
-        net = checkpoint['model']
-        last_epoch = checkpoint['epoch']
-        optimizer = checkpoint['optimizer']
-    else:
-        net = create_net(num_classes)
-        min_loss = -10000.0
-        last_epoch = -1
+    start_time = time.time()
+    _ = net(dummy_input)
+    print('time: ', time.time()-start_time)
 
     base_net_lr = args.base_net_lr if args.base_net_lr is not None else args.lr
     extra_layers_lr = args.extra_layers_lr if args.extra_layers_lr is not None else args.lr
@@ -341,60 +286,10 @@ if __name__ == '__main__':
             )}
         ]
 
-    timer.start("Load Model")
-    if args.resume:
-        logging.info(f"Resume from the model {args.resume}")
-        net.load(args.resume)
-    elif args.base_net:
-        logging.info(f"Init from base net {args.base_net}")
-        net.init_from_base_net(args.base_net)
-    elif args.pretrained_ssd:
-        logging.info(f"Init from pretrained ssd {args.pretrained_ssd}")
-        net.init_from_pretrained_ssd(args.pretrained_ssd)
-    logging.info(f'Took {timer.end("Load Model"):.2f} seconds to load the model.')
-
-    # net.load_state_dict(torch.load(r"C:\kwoncy\projects\xcode-detection\pytorch-ssd\checkpoint\mb3-small-ssd-lite-Epoch-15-Loss-9.15076301574707.pth"))
-    # net.load_state_dict(torch.load(r"C:\kwoncy\projects\xcode-detection\pytorch-ssd\checkpoint\mb2-ssd-lite-Epoch-65-Loss-3.078031623363495.pth"))
-    net.to(DEVICE)
     
-    from pytorch_model_summary import summary
-    dummy_input= torch.randn(1,3,300,300).to(DEVICE)
-    print(summary(net, dummy_input, show_input=True))
-    macs, params = profile(net, inputs=(dummy_input,))
-    macs, params = clever_format([macs,params], "%.3f")
-    print('thop macs: ',macs)
-    print('thop params: ', params)
-    flops, params = flopth(net, inputs=(dummy_input,))
-    print('flopth flops: ', flops)
-    print('flopth params: ', params)
+    
 
-    start_time = time.time()
-    _ = net(dummy_input)
-    print('time: ', time.time()-start_time)
-
-    # torch.onnx.export(net, dummy_input,f'{args.net}-ssd300.onnx',verbose=True, opset_version=11)
-
-    # criterion = MultiboxLoss(config.priors, iou_threshold=0.5, neg_pos_ratio=3,
-    #                          center_variance=0.1, size_variance=0.2, device=DEVICE)
-    # optimizer = torch.optim.SGD(params, lr=args.lr, momentum=args.momentum,
-    #                             weight_decay=args.weight_decay)
-    # logging.info(f"Learning rate: {args.lr}, Base net learning rate: {base_net_lr}, "
-    #              + f"Extra Layers learning rate: {extra_layers_lr}.")
-
-    # if args.scheduler == 'multi-step':
-    #     logging.info("Uses MultiStepLR scheduler.")
-    #     milestones = [int(v.strip()) for v in args.milestones.split(",")]
-    #     scheduler = MultiStepLR(optimizer, milestones=milestones,
-    #                                                  gamma=0.1, last_epoch=last_epoch)
-    # elif args.scheduler == 'cosine':
-    #     logging.info("Uses CosineAnnealingLR scheduler.")
-    #     scheduler = CosineAnnealingLR(optimizer, args.t_max, last_epoch=last_epoch)
-    # else:
-    #     logging.fatal(f"Unsupported Scheduler: {args.scheduler}.")
-    #     parser.print_help(sys.stderr)
-    #     sys.exit(1)
-
-
+    
 
 
 

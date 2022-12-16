@@ -68,7 +68,8 @@ def group_annotation_by_class(dataset):
             all_gt_boxes[class_index][image_id] = torch.stack(all_gt_boxes[class_index][image_id])
     for class_index in all_difficult_cases:
         for image_id in all_difficult_cases[class_index]:
-            all_gt_boxes[class_index][image_id] = torch.tensor(all_gt_boxes[class_index][image_id])
+            # all_gt_boxes[class_index][image_id] = torch.tensor(all_gt_boxes[class_index][image_id])
+            all_gt_boxes[class_index][image_id] = torch.tensor(all_gt_boxes[class_index][image_id]).clone().detach()
     return true_case_stat, all_gt_boxes, all_difficult_cases
 
 
@@ -122,13 +123,15 @@ def compute_average_precision_per_class(num_true_cases, gt_boxes, difficult_case
         return measurements.compute_average_precision(precision, recall)
 
 
-def get_class_ap_dict(class_names:list) -> dict:
+def get_class_ap_dict(txt_path:str, dataset:OpenImagesDataset3, class_names:list) -> dict:
+    true_case_stat, all_gb_boxes, all_difficult_cases = group_annotation_by_class(dataset)
     print("\n\nAverage Precision Per-class:")
     class_ap_dict = {}
+    aps = []
     for class_index, class_name in enumerate(class_names):
         if class_index == 0:
             continue
-        prediction_path = eval_path / f"det_test_{class_name}.txt"
+        prediction_path = os.path.join(txt_path,f"det_test_{class_name}.txt")
         ap = compute_average_precision_per_class(
             true_case_stat[class_index],
             all_gb_boxes[class_index],
@@ -148,21 +151,27 @@ def get_class_ap_dict(class_names:list) -> dict:
     return class_ap_dict
 
 
-if __name__ == '__main__':
-    eval_path = pathlib.Path(args.eval_dir)
-    eval_path.mkdir(exist_ok=True)
+def make_predicted_txt(eval_path, dataset=None, class_names=None, model_statedict=None, pretrained_model_path=None):
+    # eval_path = pathlib.Path(args.eval_dir)
+    
+    # eval_path.mkdir(exist_ok=True)
     timer = Timer()
 
     class_names  = ['background', "qrcode", "barcode", "mpcode", "pdf417", "dmtx"]
     class_dict = {"qrcode":1, "barcode":2, "mpcode":3, "pdf417":4, "dmtx":5, "background": 0}
     label2class_dict = {1:"qrcode", 2:"barcode", 3:"mpcode", 4:"pdf417", 5:"dmtx", 0:"background"}
-    label2class_dict = {1:"qrcode", 2:"barcode", 3:"mpcode", 4:"pdf417", 5:"dmtx", 0:"background"}
-    args.dataset = os.path.join(os.getcwd(),'jsons')
+    # args.dataset = os.path.join(os.getcwd(),'jsons')
     args.net = 'mb3-small-ssd-lite'
     args.net = 'mb1-ssd'
     args.net = 'mb2-ssd-lite'
-    args.trained_model = r"C:\kwoncy\projects\xcode-detection\pytorch-ssd\checkpoint\mb2-ssd-lite-Epoch-65-Loss-3.078031623363495.pth"
+    # args.trained_model = r"C:\kwoncy\projects\xcode-detection\pytorch-ssd\checkpoint\mb2-ssd-lite-Epoch-65-Loss-3.078031623363495.pth"
+    args.trained_model = pretrained_model_path
     args.dataset_type = 'xcode'
+    args.nms_method = 'hard'
+    args.iou_threshold = 0.5
+    args.mb2_width_mult = 1.0
+    args.eval_dir = 'eval_results'
+    DEVICE = torch.device("cuda:0" if torch.cuda.is_available() and args.use_cuda else "cpu")
 
     # args.net = 'mb3-small-ssd-lite'
     # args.label_file = r"C:\kwoncy\projects\xcode-detection\pytorch-ssd\checkpoint\voc199\voc-model-labels.txt"
@@ -179,18 +188,19 @@ if __name__ == '__main__':
     # args.lr = 0.01
 
 
-    if args.dataset_type == "voc":
-        dataset = VOCDataset(args.dataset, is_test=True)
-    elif args.dataset_type == 'open_images':
-        dataset = OpenImagesDataset(args.dataset, dataset_type="test")
-    elif args.dataset_type == 'xcode':
-        # dataset = OpenImagesDataset2(args.dataset, dataset_type="test")
-        dataset = OpenImagesDataset3(args.dataset, dataset_type="test")
-        # label_file = os.path.join(args.checkpoint_folder, "open-images-model-labels.txt")
-        # store_labels(label_file, dataset.class_names)
-        # logging.info(dataset)
-        # num_classes = len(dataset.class_names)
+    # if args.dataset_type == "voc":
+    #     dataset = VOCDataset(args.dataset, is_test=True)
+    # elif args.dataset_type == 'open_images':
+    #     dataset = OpenImagesDataset(args.dataset, dataset_type="test")
+    # elif args.dataset_type == 'xcode':
+    #     # dataset = OpenImagesDataset2(args.dataset, dataset_type="test")
+    #     dataset = OpenImagesDataset3(args.dataset, dataset_type="test")
+    #     # label_file = os.path.join(args.checkpoint_folder, "open-images-model-labels.txt")
+    #     # store_labels(label_file, dataset.class_names)
+    #     # logging.info(dataset)
+    #     # num_classes = len(dataset.class_names)
     true_case_stat, all_gb_boxes, all_difficult_cases = group_annotation_by_class(dataset)
+
     if args.net == 'vgg16-ssd':
         net = create_vgg_ssd(len(class_names), is_test=True)
     elif args.net == 'mb1-ssd':
@@ -211,7 +221,11 @@ if __name__ == '__main__':
         sys.exit(1)
 
     timer.start("Load Model")
-    net.load(args.trained_model)
+    if pretrained_model_path:
+        # net.load(args.trained_model)
+        net.load(pretrained_model_path)
+    if model_statedict:
+        net.load_state_dict(model_statedict)
     net = net.to(DEVICE)
     print(f'It took {timer.end("Load Model")} seconds to load the model.')
     if args.net == 'vgg16-ssd':
@@ -231,22 +245,15 @@ if __name__ == '__main__':
 
     
     print(f"predict start with len(dataset): {len(dataset)}")
-    
-    print(f"predict start with len(dataset): {len(dataset)}")
     results = []
     image_ids = []
-    image_ids = []
+
     for i in range(len(dataset)):
     # for i in range(100):
         # print("process image", i)
-    # for i in range(100):
-        # print("process image", i)
+
         timer.start("Load Image")
         image = dataset.get_image(i)
-        cur_data = dataset.data[i]
-        image_id = cur_data['image_id']
-        
-        # print("Load Image: {:4f} seconds.".format(timer.end("Load Image")))
         cur_data = dataset.data[i]
         image_id = cur_data['image_id']
         
@@ -254,10 +261,10 @@ if __name__ == '__main__':
         timer.start("Predict")
         boxes, labels, probs = predictor.predict(image)
         # print("Prediction: {:4f} seconds.".format(timer.end("Predict")))
-        # print("Prediction: {:4f} seconds.".format(timer.end("Predict")))
+
         indexes = torch.ones(labels.size(0), 1, dtype=torch.float32) * i
         image_ids.extend([image_id] * len(indexes))
-        image_ids.extend([image_id] * len(indexes))
+
         results.append(torch.cat([
             indexes.reshape(-1, 1),
             labels.reshape(-1, 1).float(),
@@ -267,11 +274,11 @@ if __name__ == '__main__':
     results = torch.cat(results)
     print(f"predict done. len(dataset): {len(dataset)}")
     print(f"making eval_txt files start")
-    print(f"predict done. len(dataset): {len(dataset)}")
-    print(f"making eval_txt files start")
+
     for class_index, class_name in enumerate(class_names):
         if class_index == 0: continue  # ignore background
-        prediction_path = eval_path / f"det_test_{class_name}.txt"
+        # prediction_path = eval_path / f"det_test_{class_name}.txt"
+        prediction_path = os.path.join(eval_path,f"det_test_{class_name}.txt")
         with open(prediction_path, "w") as f:
             sub = results[results[:, 1] == class_index, :]
             for i in range(sub.size(0)):
@@ -300,5 +307,13 @@ if __name__ == '__main__':
                 class_ = label2class_dict[int(label_)]
                 print(f'{img_id} {row.Label} {class_} {row.Prob} {row.Xmin} {row.Ymin} {row.Xmax} {row.Ymax}', file=f2)
             
-    aps = []
-    get_class_ap_dict(class_names)
+
+
+if __name__ == '__main__':
+    
+    eval_path = os.path.join(os.getcwd(),'eval_results')
+    dataset = OpenImagesDataset3(os.path.join(os.getcwd(),'jsons'), dataset_type="test")
+    class_names  = ['background', "qrcode", "barcode", "mpcode", "pdf417", "dmtx"]
+    pretrained = r"C:\kwoncy\projects\xcode-detection\pytorch-ssd\checkpoint\mb2-ssd-lite-Epoch-5-Loss-3.7287779664993286.pth"
+    make_predicted_txt(eval_path, dataset, class_names, None, pretrained)
+    get_class_ap_dict(eval_path, dataset, class_names)

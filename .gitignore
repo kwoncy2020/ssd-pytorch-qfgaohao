@@ -4,6 +4,7 @@ log
 models
 README-prev.md
 eval_results/
+eval_results*/
 temp2.py
 *.onnx
 
