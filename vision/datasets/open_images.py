@@ -3,7 +3,7 @@ import pathlib
 import cv2
 import pandas as pd
 import copy, json, os
-
+import torch
 
 class OpenImagesDataset:
 
@@ -149,6 +149,9 @@ class OpenImagesDataset3:
         boxes[:, 3] *= image.shape[0]
         # duplicate labels to prevent corruption of dataset
         labels = copy.copy(image_info['labels'])
+        # image = cv2.resize(image,(300,300),interpolation=cv2.INTER_AREA)
+        # image = torch.from_numpy(image.astype(np.float32)).permute(2, 0, 1)
+        # image = torch.from_numpy(image.astype(np.float32)).permute(2, 0, 1).unsqueeze(0)
         if self.transform:
             image, boxes, labels = self.transform(image, boxes, labels)
         if self.target_transform:

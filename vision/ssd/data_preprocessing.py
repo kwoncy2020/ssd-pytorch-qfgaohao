@@ -12,6 +12,9 @@ class TrainAugmentation:
         self.size = size
         self.augment = Compose([
             ConvertFromInts(),
+            ToPercentCoords(),
+            Resize(self.size),
+            ToAbsoluteCoords(),
             PhotometricDistort(),
             Expand(self.mean),
             RandomSampleCrop(),
@@ -19,10 +22,22 @@ class TrainAugmentation:
             ToPercentCoords(),
             Resize(self.size),
             SubtractMeans(self.mean),
-            lambda img, boxes=None, labels=None: (img / std, boxes, labels),
+            Normalize(std),
+            # lambda img, boxes=None, labels=None: (img / std, boxes, labels),
             ToTensor(),
         ])
-
+        # self.augment = Compose([
+        #     ConvertFromInts(),
+        #     PhotometricDistort(),
+        #     Expand(self.mean),
+        #     RandomSampleCrop(),
+        #     RandomMirror(),
+        #     ToPercentCoords(),
+        #     Resize(self.size),
+        #     SubtractMeans(self.mean),
+        #     lambda img, boxes=None, labels=None: (img / std, boxes, labels),
+        #     ToTensor(),
+        # ])
     def __call__(self, img, boxes, labels):
         """
 
@@ -40,7 +55,8 @@ class TestTransform:
             ToPercentCoords(),
             Resize(size),
             SubtractMeans(mean),
-            lambda img, boxes=None, labels=None: (img / std, boxes, labels),
+            # lambda img, boxes=None, labels=None: (img / std, boxes, labels),
+            Normalize(std),
             ToTensor(),
         ])
 
@@ -53,7 +69,8 @@ class PredictionTransform:
         self.transform = Compose([
             Resize(size),
             SubtractMeans(mean),
-            lambda img, boxes=None, labels=None: (img / std, boxes, labels),
+            # lambda img, boxes=None, labels=None: (img / std, boxes, labels),
+            Normalize(std),
             ToTensor()
         ])
 

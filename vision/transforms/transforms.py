@@ -72,6 +72,13 @@ class ConvertFromInts(object):
         return image.astype(np.float32), boxes, labels
 
 
+class Normalize(object):
+    def __init__(self,std=1.0):
+        self.std = std
+    def __call__(self,image, boxes=None, labels=None):
+        return image/self.std, boxes, labels
+
+
 class SubtractMeans(object):
     def __init__(self, mean):
         self.mean = np.array(mean, dtype=np.float32)
@@ -245,7 +252,8 @@ class RandomSampleCrop(object):
         while True:
             # randomly choose a mode
             # mode = random.choice(self.sample_options)
-            mode = random.choice(self.sample_options)
+            idx = random.choice(len(self.sample_options))
+            mode = self.sample_options[idx]
             if mode is None:
                 return image, boxes, labels
 

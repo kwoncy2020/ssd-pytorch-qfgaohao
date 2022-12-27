@@ -8,7 +8,7 @@ import torch
 from torch.utils.data import DataLoader, ConcatDataset
 from torch.optim.lr_scheduler import CosineAnnealingLR, MultiStepLR
 from torch.utils.tensorboard import SummaryWriter
-tb_writer = SummaryWriter()
+
 from vision.utils.misc import str2bool, Timer, freeze_net_layers, store_labels
 from vision.ssd.ssd import MatchPrior
 from vision.ssd.vgg_ssd import create_vgg_ssd
@@ -50,7 +50,7 @@ parser.add_argument('--mb2_width_mult', default=1.0, type=float,
                     help='Width Multiplifier for MobilenetV2')
 
 # Params for SGD
-parser.add_argument('--lr', '--learning-rate', default=1e-3, type=float,
+parser.add_argument('--lr', '--learning-rate', default=1e-7, type=float,
                     help='initial learning rate')
 parser.add_argument('--momentum', default=0.9, type=float,
                     help='Momentum value for optim')
@@ -84,11 +84,11 @@ parser.add_argument('--t_max', default=120, type=float,
                     help='T_max value for Cosine Annealing Scheduler.')
 
 # Train params
-parser.add_argument('--batch_size', default=64, type=int,
+parser.add_argument('--batch_size', default=32, type=int,
                     help='Batch size for training')
 parser.add_argument('--num_epochs', default=120, type=int,
                     help='the number epochs')
-parser.add_argument('--num_workers', default=0, type=int,
+parser.add_argument('--num_workers', default=4, type=int,
                     help='Number of workers used in dataloading')
 parser.add_argument('--validation_epochs', default=5, type=int,
                     help='the number epochs')
@@ -117,13 +117,16 @@ def train(loader, net, criterion, optimizer, device, debug_steps=100, epoch=-1, 
     running_regression_loss = 0.0
     running_classification_loss = 0.0
     for i, data in enumerate(loader):
+        # if i % 10 == 0:
+        # print("i:",i)
         images, boxes, labels = data
         images = images.to(device)
         boxes = boxes.to(device)
         labels = labels.to(device)
-
+        # print("to(device) i:",i)
         optimizer.zero_grad()
         confidence, locations = net(images)
+        # print("end net i:",i)
         regression_loss, classification_loss = criterion(confidence, locations, labels, boxes)  # TODO CHANGE BOXES
         loss = regression_loss + classification_loss
         loss.backward()
@@ -178,7 +181,7 @@ def test(loader, net, criterion, device):
 
 if __name__ == '__main__':
     timer = Timer()
-
+    tb_writer = SummaryWriter()
     args.net = 'mb3-small-ssd-lite'
     args.net = 'mb1-ssd'
     args.net = 'mb2-ssd-lite'
@@ -187,13 +190,13 @@ if __name__ == '__main__':
     args.datasets = [os.path.join(os.getcwd(),'jsons')]
     resume_model_path = None
     args.lr = 1e-7
-    # resume_model_path = r"C:\kwoncy\projects\xcode-detection\pytorch-ssd\checkpoint\mb2-ssd-lite-Epoch-65-Loss-3.078031623363495-opt-loss.pth.tar"
+    # resume_model_path = r"C:\kwoncy\projects\xcode-detection\pytorch-ssd\checkpoint\mb2-ssd-lite-Epoch-15-Loss-3.5257923197746277-opt-loss.pth.tar"
     # args.resume = r"C:\kwoncy\projects\xcode-detection\pytorch-ssd\checkpoint\mobilenet-v1-ssd-mp-0_675.pth"
     # model_path = None
     # args.scheduler = None
     # args.base_net = r"C:\kwoncy\projects\xcode-detection\pytorch-ssd\checkpoint\mobilenet_v1_with_relu_69_5.pth"
-    args.base_net = r"C:\kwoncy\projects\xcode-detection\pytorch-ssd\checkpoint\pretrained\mb2-imagenet-71_8.pth"
-    args.num_epochs = 400
+    # args.base_net = r"C:\kwoncy\projects\xcode-detection\pytorch-ssd\checkpoint\pretrained\mb2-imagenet-71_8.pth"
+    args.num_epochs = 800
     
     # args.net = 'mb3-small-ssd-lite'
     # args.checkpoint_folder = os.path.join(os.getcwd(),'checkpoint')
@@ -364,6 +367,11 @@ if __name__ == '__main__':
         net.load_state_dict(checkpoint['model_state_dict'])
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         criterion = checkpoint['loss']
+        scheduler = checkpoint['scheduler']
+        print('last_epoch: ',last_epoch)
+        print('scheduler_last_epoch: ',scheduler.last_epoch)
+        scheduler.last_epoch = last_epoch
+        print('scheduler_last_epoch: ',scheduler.last_epoch)
     else:
         min_loss = -10000.0
         last_epoch = -1
@@ -373,23 +381,22 @@ if __name__ == '__main__':
         criterion = MultiboxLoss(config.priors, iou_threshold=0.5, neg_pos_ratio=3,
                                 center_variance=0.1, size_variance=0.2, device=DEVICE)
     
-    logging.info(f"Learning rate: {args.lr}, Base net learning rate: {base_net_lr}, "
-                 + f"Extra Layers learning rate: {extra_layers_lr}.")
+        logging.info(f"Learning rate: {args.lr}, Base net learning rate: {base_net_lr}, "
+                    + f"Extra Layers learning rate: {extra_layers_lr}.")
 
-    if args.scheduler == 'multi-step':
-        logging.info("Uses MultiStepLR scheduler.")
-        milestones = [int(v.strip()) for v in args.milestones.split(",")]
-        scheduler = CosineAnnealingWarmUpRestarts(optimizer, T_0=10, T_mult=2, eta_max=0.01,  T_up=1, gamma=0.5, last_epoch=last_epoch)
-        # scheduler = CosineAnnealingWarmUpRestarts(optimizer, T_0=40, T_mult=2, eta_max=0.01,  T_up=1, gamma=0.01, last_epoch=last_epoch)
-        # scheduler = MultiStepLR(optimizer, milestones=milestones,
-                                                    #  gamma=0.1, last_epoch=last_epoch)
-    elif args.scheduler == 'cosine':
-        logging.info("Uses CosineAnnealingLR scheduler.")
-        scheduler = CosineAnnealingLR(optimizer, args.t_max, last_epoch=last_epoch)
-    else:
-        logging.fatal(f"Unsupported Scheduler: {args.scheduler}.")
-        parser.print_help(sys.stderr)
-        sys.exit(1)
+        if args.scheduler == 'multi-step':
+            logging.info("Uses MultiStepLR scheduler.")
+            milestones = [int(v.strip()) for v in args.milestones.split(",")]
+            scheduler = CosineAnnealingWarmUpRestarts(optimizer, T_0=10, T_mult=2, eta_max=0.01,  T_up=1, gamma=0.5, last_epoch=last_epoch)
+            # scheduler = MultiStepLR(optimizer, milestones=milestones,
+                                                        #  gamma=0.1, last_epoch=last_epoch)
+        elif args.scheduler == 'cosine':
+            logging.info("Uses CosineAnnealingLR scheduler.")
+            scheduler = CosineAnnealingLR(optimizer, args.t_max, last_epoch=last_epoch)
+        else:
+            logging.fatal(f"Unsupported Scheduler: {args.scheduler}.")
+            parser.print_help(sys.stderr)
+            sys.exit(1)
 
     logging.info(f"Start training from epoch {last_epoch + 1}.")
     for epoch in range(last_epoch + 1, args.num_epochs):

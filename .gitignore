@@ -3,8 +3,10 @@
 log
 models
 README-prev.md
+draw_eval*/
 eval_results/
 eval_results*/
+extract_fp_images/
 temp2.py
 *.onnx
 
@@ -12,7 +14,7 @@ temp2.py
 *.pth
 checkpoint/
 jsons/
-
+jsons*/
 # images
 *.jpg
 *.png
