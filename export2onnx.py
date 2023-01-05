@@ -18,7 +18,7 @@ from vision.ssd.mobilenet_v2_ssd_lite import create_mobilenetv2_ssd_lite
 from vision.ssd.mobilenetv3_ssd_lite import create_mobilenetv3_large_ssd_lite, create_mobilenetv3_small_ssd_lite
 from vision.ssd.squeezenet_ssd_lite import create_squeezenet_ssd_lite
 from vision.datasets.voc_dataset import VOCDataset
-from vision.datasets.open_images import OpenImagesDataset, OpenImagesDataset2, OpenImagesDataset3
+from vision.datasets.open_images import OpenImagesDataset,  OpenImagesDataset3
 from vision.nn.multibox_loss import MultiboxLoss
 from vision.ssd.config import vgg_ssd_config
 from vision.ssd.config import mobilenetv1_ssd_config
@@ -124,6 +124,8 @@ if __name__ == '__main__':
     args.net = 'mb3-small-ssd-lite'
     args.net = 'mb2-ssd-lite'
     args.net = 'mb1-ssd'
+    args.net = 'mb2-ssd600-lite'
+
     args.checkpoint_folder = os.path.join(os.getcwd(),'checkpoint')
     args.dataset_type = 'xcode'
     args.datasets = [os.path.join(os.getcwd(),'jsons')]
@@ -160,6 +162,8 @@ if __name__ == '__main__':
         net = create_mobilenetv3_large_ssd_lite(len(class_names), is_test=True)
     elif args.net == 'mb3-small-ssd-lite':
         net = create_mobilenetv3_small_ssd_lite(len(class_names), is_test=True)
+    elif args.net == 'mb2-ssd600-lite':
+        net =  create_mobilenetv2_ssd_lite(len(class_names), is_test=True, ssd600=True)
     else:
         logging.fatal("The net type is wrong. It should be one of vgg16-ssd, mb1-ssd and mb1-ssd-lite.")
         parser.print_help(sys.stderr)
@@ -175,7 +179,10 @@ if __name__ == '__main__':
     net.to(DEVICE)
     
     from pytorch_model_summary import summary
-    dummy_input= torch.randn(1,3,300,300).to(DEVICE)
+    # dummy_input= torch.randn(1,3,300,300).to(DEVICE)
+    dummy_input= torch.randn(1,3,600,600).to(DEVICE)
+    # torch.onnx.export(net, dummy_input,f'{args.net}.onnx',verbose=True, opset_version=11)
+
     print(summary(net, dummy_input, show_input=True))
     macs, params = profile(net, inputs=(dummy_input,))
     macs, params = clever_format([macs,params], "%.3f")
@@ -184,6 +191,7 @@ if __name__ == '__main__':
     flops, params = flopth(net, inputs=(dummy_input,))
     print('flopth flops: ', flops)
     print('flopth params: ', params)
+
 
     start_time = time.time()
     _ = net(dummy_input)

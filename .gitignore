@@ -7,7 +7,8 @@ draw_eval*/
 eval_results/
 eval_results*/
 extract_fp_images/
-temp2.py
+temp*.py
+
 *.onnx
 
 # Pytorch Models

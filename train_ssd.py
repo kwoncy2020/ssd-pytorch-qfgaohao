@@ -18,7 +18,7 @@ from vision.ssd.mobilenet_v2_ssd_lite import create_mobilenetv2_ssd_lite
 from vision.ssd.mobilenetv3_ssd_lite import create_mobilenetv3_large_ssd_lite, create_mobilenetv3_small_ssd_lite
 from vision.ssd.squeezenet_ssd_lite import create_squeezenet_ssd_lite
 from vision.datasets.voc_dataset import VOCDataset
-from vision.datasets.open_images import OpenImagesDataset, OpenImagesDataset2, OpenImagesDataset3
+from vision.datasets.open_images import OpenImagesDataset, OpenImagesDataset3
 from vision.nn.multibox_loss import MultiboxLoss
 from vision.ssd.config import vgg_ssd_config
 from vision.ssd.config import mobilenetv1_ssd_config
@@ -185,18 +185,19 @@ if __name__ == '__main__':
     args.net = 'mb3-small-ssd-lite'
     args.net = 'mb1-ssd'
     args.net = 'mb2-ssd-lite'
+    args.net = 'mb2-ssd600-lite'
     args.checkpoint_folder = os.path.join(os.getcwd(),'checkpoint')
     args.dataset_type = 'xcode'
     args.datasets = [os.path.join(os.getcwd(),'jsons')]
     resume_model_path = None
     args.lr = 1e-7
-    # resume_model_path = r"C:\kwoncy\projects\xcode-detection\pytorch-ssd\checkpoint\mb2-ssd-lite-Epoch-15-Loss-3.5257923197746277-opt-loss.pth.tar"
+    # resume_model_path = r"C:\kwoncy\projects\xcode-detection\pytorch-ssd\checkpoint\mb2-ssd-lite-Epoch-550-Loss-1.781787894964218-opt-loss.pth.tar"
     # args.resume = r"C:\kwoncy\projects\xcode-detection\pytorch-ssd\checkpoint\mobilenet-v1-ssd-mp-0_675.pth"
     # model_path = None
     # args.scheduler = None
     # args.base_net = r"C:\kwoncy\projects\xcode-detection\pytorch-ssd\checkpoint\mobilenet_v1_with_relu_69_5.pth"
-    # args.base_net = r"C:\kwoncy\projects\xcode-detection\pytorch-ssd\checkpoint\pretrained\mb2-imagenet-71_8.pth"
-    args.num_epochs = 800
+    args.base_net = r"C:\kwoncy\projects\xcode-detection\pytorch-ssd\checkpoint\pretrained\mb2-imagenet-71_8.pth"
+    args.num_epochs = 1800
     
     # args.net = 'mb3-small-ssd-lite'
     # args.checkpoint_folder = os.path.join(os.getcwd(),'checkpoint')
@@ -231,15 +232,23 @@ if __name__ == '__main__':
     elif args.net == 'mb3-small-ssd-lite':
         create_net = lambda num: create_mobilenetv3_small_ssd_lite(num)
         config = mobilenetv1_ssd_config
+    elif args.net == 'mb2-ssd600-lite':
+        create_net = lambda num : create_mobilenetv2_ssd_lite(num, width_mult=args.mb2_width_mult, ssd600=True)
+        config = mobilenetv1_ssd_config
     else:
         logging.fatal("The net type is wrong.")
         parser.print_help(sys.stderr)
         sys.exit(1)
-    train_transform = TrainAugmentation(config.image_size, config.image_mean, config.image_std)
+    
+    if args.net == 'mb2-ssd600-lite':
+        train_transform = TrainAugmentation(600, config.image_mean, config.image_std)
+        test_transform = TestTransform(600, config.image_mean, config.image_std)
+    else:
+        train_transform = TrainAugmentation(config.image_size, config.image_mean, config.image_std)
+        test_transform = TestTransform(config.image_size, config.image_mean, config.image_std)
     target_transform = MatchPrior(config.priors, config.center_variance,
                                   config.size_variance, 0.5)
 
-    test_transform = TestTransform(config.image_size, config.image_mean, config.image_std)
 
     logging.info("Prepare training datasets.")
     datasets = []
@@ -387,7 +396,7 @@ if __name__ == '__main__':
         if args.scheduler == 'multi-step':
             logging.info("Uses MultiStepLR scheduler.")
             milestones = [int(v.strip()) for v in args.milestones.split(",")]
-            scheduler = CosineAnnealingWarmUpRestarts(optimizer, T_0=10, T_mult=2, eta_max=0.01,  T_up=1, gamma=0.5, last_epoch=last_epoch)
+            scheduler = CosineAnnealingWarmUpRestarts(optimizer, T_0=20, T_mult=1, eta_max=0.01,  T_up=1, gamma=0.7, last_epoch=last_epoch)
             # scheduler = MultiStepLR(optimizer, milestones=milestones,
                                                         #  gamma=0.1, last_epoch=last_epoch)
         elif args.scheduler == 'cosine':
@@ -435,12 +444,9 @@ if __name__ == '__main__':
             )
             model_path = os.path.join(args.checkpoint_folder, f"{args.net}-Epoch-{epoch}-Loss-{val_loss}.pth")
             net.save(model_path)
-            model_path2 = os.path.join(args.checkpoint_folder, f"{args.net}-Epoch-{epoch}-Loss-{val_loss}-include.pth.tar")
+            
             model_path3 = os.path.join(args.checkpoint_folder, f"{args.net}-Epoch-{epoch}-Loss-{val_loss}-opt-loss.pth.tar")
-            try:
-                net.save2(epoch,optimizer,model_path2)
-            except Exception as e:
-                print(f'torch.save exception ({e})')
+
             try:
                 net.save3(epoch, optimizer, criterion, scheduler, model_path3)
             except Exception as e:

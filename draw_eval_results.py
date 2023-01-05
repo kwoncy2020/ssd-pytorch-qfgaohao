@@ -83,20 +83,28 @@ df_total = pd.concat([df_bar, df_dmtx, df_mpcode, df_pdf417, df_qr],ignore_index
 for image_id, g in df_total.groupby('ImageID'):
     # image = cv2.imread(os.path.join(image_dir, image_id + ".jpg"))
     image = cv2.imread(image_id)
+    h,w = image.shape[:2]
+    thickness = 4
+    fontscale = 1
+    if h > 3000 and w > 3000:
+        thickness *= 3
+        fontscale *= 3
     head, tail = os.path.split(image_id)
     
     for row in g.itertuples():
         if row.Prob < threshold:
             continue
-        cv2.rectangle(image, (row.x1, row.y1), (row.x2, row.y2), (255, 255, 0), 4)
+        # cv2.rectangle(image, (row.x1, row.y1), (row.x2, row.y2), (255, 255, 0), thickness)
+        cv2.rectangle(image, (row.x1, row.y1), (row.x2, row.y2), (0, 0, 255), thickness)
         label = f"{row.Label}-{row.Prob:.2f}"
 
         cv2.putText(image, label,
                     (row.x1 + 20, row.y1 + 40 ),
                     cv2.FONT_HERSHEY_SIMPLEX,
-                    1,  # font scale
+                    fontscale,  # font scale
                     (255, 0, 255),
-                    2)  # line type
+                    # (255, 0, 0),
+                    thickness=thickness//2)  # line type
     # cv2.imwrite(os.path.join(output_dir, image_id), image)
     cv2.imwrite(os.path.join(output_dir, tail), image)
 print(f"Task Done. Processed {df_total.shape[0]} bounding boxes.")

@@ -29,6 +29,7 @@ class SSD(nn.Module):
         # register layers in source_layer_indexes by adding them to a module list
         self.source_layer_add_ons = nn.ModuleList([t[1] for t in source_layer_indexes
                                                    if isinstance(t, tuple) and not isinstance(t, GraphPath)])
+
         if device:
             self.device = device
         else:
@@ -155,6 +156,8 @@ class SSD(nn.Module):
         'loss': loss}
         # torch.save(self.state_dict(), model_path)
         torch.save(state, model_path)
+
+
 
 class MatchPrior(object):
     def __init__(self, center_form_priors, center_variance, size_variance, iou_threshold):

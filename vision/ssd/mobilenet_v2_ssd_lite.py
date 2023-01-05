@@ -21,9 +21,9 @@ def SeperableConv2d(in_channels, out_channels, kernel_size=1, stride=1, padding=
     )
 
 
-def create_mobilenetv2_ssd_lite(num_classes, width_mult=1.0, use_batch_norm=True, onnx_compatible=True, is_test=False):
+def create_mobilenetv2_ssd_lite(num_classes, width_mult=1.0, use_batch_norm=True, onnx_compatible=True, is_test=False, ssd600=False, device=None):
     base_net = MobileNetV2(width_mult=width_mult, use_batch_norm=use_batch_norm,
-                           onnx_compatible=onnx_compatible).features
+                           onnx_compatible=onnx_compatible, ssd600=ssd600).features
 
     source_layer_indexes = [
         GraphPath(14, 'conv', 3),
@@ -56,15 +56,21 @@ def create_mobilenetv2_ssd_lite(num_classes, width_mult=1.0, use_batch_norm=True
     ])
 
     return SSD(num_classes, base_net, source_layer_indexes,
-               extras, classification_headers, regression_headers, is_test=is_test, config=config)
+               extras, classification_headers, regression_headers, is_test=is_test, config=config, device=device)
 
 
-def create_mobilenetv2_ssd_lite_predictor(net, candidate_size=200, nms_method=None, sigma=0.5, device=torch.device('cpu')):
-    predictor = Predictor(net, config.image_size, config.image_mean,
-                          config.image_std,
-                          nms_method=nms_method,
-                          iou_threshold=config.iou_threshold,
-                          candidate_size=candidate_size,
-                          sigma=sigma,
-                          device=device)
+def create_mobilenetv2_ssd_lite_predictor(net, candidate_size=200, nms_method=None, sigma=0.5, device=torch.device('cpu'), ssd600:bool=False):
+    if ssd600:
+        image_size = 600
+    else:
+        image_size = config.image_size
+    predictor = Predictor(net, image_size, config.image_mean,
+                        config.image_std,
+                        nms_method=nms_method,
+                        iou_threshold=config.iou_threshold,
+                        candidate_size=candidate_size,
+                        sigma=sigma,
+                        device=device)
+    
     return predictor
+

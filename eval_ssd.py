@@ -4,7 +4,7 @@ from vision.ssd.mobilenetv1_ssd import create_mobilenetv1_ssd, create_mobilenetv
 from vision.ssd.mobilenetv1_ssd_lite import create_mobilenetv1_ssd_lite, create_mobilenetv1_ssd_lite_predictor
 from vision.ssd.squeezenet_ssd_lite import create_squeezenet_ssd_lite, create_squeezenet_ssd_lite_predictor
 from vision.datasets.voc_dataset import VOCDataset
-from vision.datasets.open_images import OpenImagesDataset, OpenImagesDataset2, OpenImagesDataset3
+from vision.datasets.open_images import OpenImagesDataset, OpenImagesDataset3
 from vision.utils import box_utils, measurements
 from vision.utils.misc import str2bool, Timer
 import argparse, os
@@ -507,6 +507,7 @@ def make_predicted_txt(eval_path, dataset=None, class_names=None, model_state_di
     args.net = 'mb3-small-ssd-lite'
     args.net = 'mb1-ssd'
     args.net = 'mb2-ssd-lite'
+    args.net = 'mb2-ssd600-lite'
     # args.trained_model = r"C:\kwoncy\projects\xcode-detection\pytorch-ssd\checkpoint\mb2-ssd-lite-Epoch-65-Loss-3.078031623363495.pth"
     args.trained_model = pretrained_model_path
     args.dataset_type = 'xcode'
@@ -558,6 +559,8 @@ def make_predicted_txt(eval_path, dataset=None, class_names=None, model_state_di
         net = create_mobilenetv3_large_ssd_lite(len(class_names), is_test=True)
     elif args.net == 'mb3-small-ssd-lite':
         net = create_mobilenetv3_small_ssd_lite(len(class_names), is_test=True)
+    elif args.net == 'mb2-ssd600-lite':
+        net = create_mobilenetv2_ssd_lite(len(class_names), is_test=True, ssd600=True)
     else:
         logging.fatal("The net type is wrong. It should be one of vgg16-ssd, mb1-ssd and mb1-ssd-lite.")
         parser.print_help(sys.stderr)
@@ -580,6 +583,8 @@ def make_predicted_txt(eval_path, dataset=None, class_names=None, model_state_di
     elif args.net == 'sq-ssd-lite':
         predictor = create_squeezenet_ssd_lite_predictor(net,nms_method=args.nms_method, device=DEVICE)
     elif args.net == 'mb2-ssd-lite' or args.net == "mb3-large-ssd-lite" or args.net == "mb3-small-ssd-lite":
+        predictor = create_mobilenetv2_ssd_lite_predictor(net, nms_method=args.nms_method, device=DEVICE)
+    elif args.net == 'mb2-ssd600-lite':
         predictor = create_mobilenetv2_ssd_lite_predictor(net, nms_method=args.nms_method, device=DEVICE)
     else:
         logging.fatal("The net type is wrong. It should be one of vgg16-ssd, mb1-ssd and mb1-ssd-lite.")
@@ -670,18 +675,20 @@ def make_predicted_txt(eval_path, dataset=None, class_names=None, model_state_di
 if __name__ == '__main__':
     
     eval_path = os.path.join(os.getcwd(),'eval_results')
-    dataset = OpenImagesDataset3(os.path.join(os.getcwd(),'jsons'), dataset_type="test")
+    # dataset = OpenImagesDataset3(os.path.join(os.getcwd(),'jsons'), dataset_type="test", read_cross_dataset_path=r"C:\kwoncy\projects\xcode-detection\pytorch-ssd\jsons_original")
+    dataset = OpenImagesDataset3(os.path.join(os.getcwd(),'jsons'), dataset_type="test", read_cross_dataset_path=r"C:\kwoncy\projects\xcode-detection\pytorch-ssd\jsons_crop")
+    # dataset = OpenImagesDataset3(os.path.join(os.getcwd(),'jsons'), dataset_type="test")
     class_names  = ['background', "qrcode", "barcode", "mpcode", "pdf417", "dmtx"]
-    pretrained = r"C:\kwoncy\projects\xcode-detection\pytorch-ssd\checkpoint\mb2-ssd-lite-with-weight-lr-warmup-map87\mb2-ssd-lite-Epoch-135-Loss-0.8405212217569351.pth"
-    # make_predicted_txt(eval_path, dataset, class_names, None, pretrained)
-    # get_class_ap_dict(eval_path, dataset, class_names)
-    true_case_stat, all_gt_boxes, all_difficult_cases, gt_boxes_with_id_class = group_annotation_by_class(dataset)
-    cm = compute_confusion_matrix(true_case_stat, all_gt_boxes,all_difficult_cases, os.path.join(os.getcwd(),'eval_results','det_test_total2.txt'),0.5,False,gt_boxes_with_id_class)
-    cm2={}
-    for k,v in cm.items():
-        if 'FP_image_ids' in v:
-            del v['FP_image_ids']
-        cm2[k] = v
-    print(cm2)
-    # extract_fp_images(cm)
-    make_cm2plot(cm2)
+    pretrained = r"C:\kwoncy\projects\xcode-detection\pytorch-ssd\checkpoint\mb2-ssd-lite-Epoch-445-Loss-1.722874907851219.pth"
+    make_predicted_txt(eval_path, dataset, class_names, None, pretrained)
+    get_class_ap_dict(eval_path, dataset, class_names)
+    # true_case_stat, all_gt_boxes, all_difficult_cases, gt_boxes_with_id_class = group_annotation_by_class(dataset)
+    # cm = compute_confusion_matrix(true_case_stat, all_gt_boxes,all_difficult_cases, os.path.join(os.getcwd(),'eval_results','det_test_total2.txt'),0.5,False,gt_boxes_with_id_class)
+    # cm2={}
+    # for k,v in cm.items():
+    #     if 'FP_image_ids' in v:
+    #         del v['FP_image_ids']
+    #     cm2[k] = v
+    # print(cm2)
+    # # extract_fp_images(cm)
+    # make_cm2plot(cm2)
