@@ -1,13 +1,13 @@
-import torch
+import torch, typing
 from vision.ssd.vgg_ssd import create_vgg_ssd, create_vgg_ssd_predictor
 from vision.ssd.mobilenetv1_ssd import create_mobilenetv1_ssd, create_mobilenetv1_ssd_predictor
 from vision.ssd.mobilenetv1_ssd_lite import create_mobilenetv1_ssd_lite, create_mobilenetv1_ssd_lite_predictor
 from vision.ssd.squeezenet_ssd_lite import create_squeezenet_ssd_lite, create_squeezenet_ssd_lite_predictor
 from vision.datasets.voc_dataset import VOCDataset
-from vision.datasets.open_images import OpenImagesDataset, OpenImagesDataset3
+from vision.datasets.open_images import OpenImagesDataset, OpenImagesDataset3, MyImagesDataset
 from vision.utils import box_utils, measurements
 from vision.utils.misc import str2bool, Timer
-import argparse, os
+import argparse, os, time
 import pathlib
 import numpy as np
 import logging
@@ -52,7 +52,8 @@ def group_annotation_by_class(dataset):
     for i in range(len(dataset)):
         image_id, annotation = dataset.get_annotation(i)
         gt_boxes, classes, is_difficult = annotation
-        gt_boxes = torch.from_numpy(gt_boxes)
+        if not isinstance(gt_boxes, torch.Tensor):
+            gt_boxes = torch.from_numpy(gt_boxes)
         for i, difficult in enumerate(is_difficult):
             class_index = int(classes[i])
             gt_box = gt_boxes[i]
@@ -466,7 +467,7 @@ def compute_average_precision_per_class(num_true_cases, gt_boxes, difficult_case
         return measurements.compute_average_precision(precision, recall)
 
 
-def get_class_ap_dict(txt_path:str, dataset:OpenImagesDataset3, class_names:list) -> dict:
+def get_class_ap_dict(txt_path:str, dataset:typing.Union[OpenImagesDataset3, MyImagesDataset], class_names:list) -> dict:
     true_case_stat, all_gb_boxes, all_difficult_cases, _ = group_annotation_by_class(dataset)
     print("\n\nAverage Precision Per-class:")
     class_ap_dict = {}
@@ -585,7 +586,7 @@ def make_predicted_txt(eval_path, dataset=None, class_names=None, model_state_di
     elif args.net == 'mb2-ssd-lite' or args.net == "mb3-large-ssd-lite" or args.net == "mb3-small-ssd-lite":
         predictor = create_mobilenetv2_ssd_lite_predictor(net, nms_method=args.nms_method, device=DEVICE)
     elif args.net == 'mb2-ssd600-lite':
-        predictor = create_mobilenetv2_ssd_lite_predictor(net, nms_method=args.nms_method, device=DEVICE)
+        predictor = create_mobilenetv2_ssd_lite_predictor(net, nms_method=args.nms_method, device=DEVICE, ssd600=True)
     else:
         logging.fatal("The net type is wrong. It should be one of vgg16-ssd, mb1-ssd and mb1-ssd-lite.")
         parser.print_help(sys.stderr)
@@ -595,13 +596,16 @@ def make_predicted_txt(eval_path, dataset=None, class_names=None, model_state_di
     print(f"predict start with len(dataset): {len(dataset)}")
     results = []
     image_ids = []
-
+    predict_time = time.time()
     for i in range(len(dataset)):
     # for i in range(100):
         # print("process image", i)
 
         timer.start("Load Image")
-        image = dataset.get_image(i)
+        if isinstance(dataset,MyImagesDataset):
+            _, image, _, _ = dataset.get_image(i)
+        else:
+            image = dataset.get_image(i)
         cur_data = dataset.data[i]
         image_id = cur_data['image_id']
         
@@ -625,9 +629,11 @@ def make_predicted_txt(eval_path, dataset=None, class_names=None, model_state_di
             boxes + 1.0  # matlab's indexes start from 1
         ], dim=1))
     results = torch.cat(results)
-    print(f"predict done. len(dataset): {len(dataset)}")
-    print(f"making eval_txt files start")
+    print(f"predict done. len(dataset): {len(dataset)}, time: {time.time()-predict_time}")
 
+    print(f"making eval_txt files start")
+    make_txt_time = time.time()
+    total_line = 0
     for class_index, class_name in enumerate(class_names):
         if class_index == 0: continue  # ignore background
         # prediction_path = eval_path / f"det_test_{class_name}.txt"
@@ -641,11 +647,14 @@ def make_predicted_txt(eval_path, dataset=None, class_names=None, model_state_di
                     image_id + " " + " ".join([str(v) for v in prob_box]),
                     file=f
                 )
-    print(f"making eval_txt files done.")
+                total_line += 1
+    print(f"making eval_txt files done. total_line: {total_line}, time: {time.time()-make_txt_time}")
 
+    print(f"making eval_total_txt files start")
+    make_total_txt_time = time.time()
     df = pd.DataFrame(results.numpy(force=True),columns=['Dataset_index', 'Label', 'Prob', 'Xmin', 'Ymin', 'Xmax', 'Ymax'])
     df['Image_id'] = image_ids
-    
+    total_line = 0
     prediction_path = os.path.join(os.getcwd(),'eval_results','det_test_total.txt')
     with open(prediction_path, 'w') as f1:
         for img_id, g in df.groupby('Image_id'):
@@ -656,9 +665,14 @@ def make_predicted_txt(eval_path, dataset=None, class_names=None, model_state_di
                 label_ = row.Label
                 class_ = label2class_dict[int(label_)]
                 print(f'{img_id} {row.Label} {class_} {row.Prob} {row.Xmin} {row.Ymin} {row.Xmax} {row.Ymax}', file=f1)
-            
-    df2 = df[df['Prob'] > 0.5]
+                total_line += 1
+    
+    print(f"making eval_total_txt files done. total_line: {total_line}, time: {time.time()-make_total_txt_time}")
 
+    print(f"making eval_total2_txt files start ( > 0.5)")
+    df2 = df[df['Prob'] > 0.5]
+    total_line = 0 
+    make_total2_txt_time = time.time()
     prediction_path = os.path.join(os.getcwd(),'eval_results','det_test_total2.txt')
     with open(prediction_path, 'w') as f2:
         for img_id, g in df2.groupby('Image_id'):
@@ -669,7 +683,9 @@ def make_predicted_txt(eval_path, dataset=None, class_names=None, model_state_di
                 label_ = row.Label
                 class_ = label2class_dict[int(label_)]
                 print(f'{img_id} {row.Label} {class_} {row.Prob} {row.Xmin} {row.Ymin} {row.Xmax} {row.Ymax}', file=f2)
-            
+                total_line += 1
+
+    print(f"making eval_total2_txt files done. total_line: {total_line}, time: {time.time()-make_total2_txt_time}")
 
 
 if __name__ == '__main__':

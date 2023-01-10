@@ -6,6 +6,26 @@ import copy, json, os, math
 import torch, glob
 import pickle as pkl
 
+class ToAbsoluteCoords(object):
+    def __call__(self, image, boxes=None, labels=None):
+        height, width, channels = image.shape
+        boxes[:, 0] *= width
+        boxes[:, 2] *= width
+        boxes[:, 1] *= height
+        boxes[:, 3] *= height
+
+        return image, boxes, labels
+
+
+class ToPercentCoords(object):
+    def __call__(self, image, boxes=None, labels=None):
+        height, width, channels = image.shape
+        boxes[:, 0] /= width
+        boxes[:, 2] /= width
+        boxes[:, 1] /= height
+        boxes[:, 3] /= height
+
+        return image, boxes, labels
 
 class OpenImagesDataset:
 
@@ -300,46 +320,51 @@ class OpenImagesDataset3:
 
 class MyImagesDataset:
 
-    def __init__(self, root,
+    def __init__(self, data_root:str,
                  transform=None, target_transform=None,
                  dataset_type="train", balance_data=False,
-                 original_images_dir=None, crop_images_dir=None):
+                 original_images_dir=None, crop_images_dir=None,
+                 load_kind:str='both',
+                 init_image_size:int = 300,
+                 final_image_size:int = 300):
         assert original_images_dir and crop_images_dir
-        if root:
-            self.root = pathlib.Path(root)
+        
+        # self.root = pathlib.Path(root)
+        self.data_root:str = data_root
         self.transform = transform
         self.target_transform = target_transform
         self.dataset_type = dataset_type.lower()
         self.original_images_dir = original_images_dir
         self.crop_images_dir = crop_images_dir
+        self.load_kind = load_kind
+        self.init_image_size = init_image_size
+        self.final_image_size = final_image_size
+        self.ToPercentCoords = ToPercentCoords()
+        self.ToAbsoluteCoords = ToAbsoluteCoords()
 
-        self.data, self.class_names, self.class_dict = self._read_data()
+        self.class_dict = {"qrcode":1, "barcode":2, "mpcode":3, "pdf417":4, "dmtx":5, "background": 0}
+        self.class_names  = ['background', "qrcode", "barcode", "mpcode", "pdf417", "dmtx"]
+        self.data = self._read_data(self.load_kind)
         self.balance_data = balance_data
         self.min_image_num = -1
         if self.balance_data:
             self.data = self._balance_data()
 
-        # self.ids = [info['image_id'] for info in self.data]
-
+        self.ids = [info['image_id'] for info in self.data]
         self.class_stat = None
 
-    def _resize_and_rotate_with_corner_points(self,image:np.ndarray,corner_points:np.ndarray, init_size:int=300, final_size:int=300, rotate_degree=None)->'list[np.ndarray,np.ndarray]':
+    def _resize_and_rotate_with_corner_points(self,image:np.ndarray,corner_points:np.ndarray, init_image_size:int=600, rotate_degree=None)->'list[np.ndarray,np.ndarray]':
         h,w = image.shape[:2]
-        print('image_shape:',image.shape)
-        print('corner_points')
-        print(corner_points)
 
         corner_points[:,::2] = corner_points[:,::2] / w
         corner_points[:,1::2] = corner_points[:,1::2] / h
 
-        resized_image = cv2.resize(image,(init_size,init_size),interpolation=cv2.INTER_AREA)
+        resized_image = cv2.resize(image,(init_image_size,init_image_size),interpolation=cv2.INTER_AREA)
         resized_h,resized_w = resized_image.shape[:2]
 
-        print('resized_image_shape:',resized_image.shape)
         corner_points[:,::2] *= resized_w
         corner_points[:,1::2] *= resized_h
-        print('resized_corner_points')
-        print(corner_points)
+
         num_corner_points = len(corner_points)
 
         if not rotate_degree or rotate_degree == 0:
@@ -357,8 +382,9 @@ class MyImagesDataset:
 
         corner_points = corner_points.reshape(num_corner_points,-1,2)
         corner_points = corner_points.transpose(0,2,1)
+        #### required center modified
+        # center_modified_corner_points = 
         rotated_corner_points = np.matmul(rm,corner_points)
-        print('rotated_corner_points: ', rotated_corner_points)
 
         boxes = np.zeros((num_corner_points,4))
         boxes[:,0] = np.min(rotated_corner_points[:,0,:], axis=1)
@@ -371,7 +397,7 @@ class MyImagesDataset:
             rotated_image = cv2.warpAffine(resized_image,M,(resized_w,resized_h))
             return rotated_image, boxes
 
-        half_size = init_size//2
+        half_size = init_image_size//2
         point = np.array([[-half_size,half_size,half_size,-half_size],[half_size,half_size,-half_size,-half_size]])
 
         points = np.matmul(rm,point)
@@ -383,14 +409,11 @@ class MyImagesDataset:
         right_pad = math.ceil(abs(abs(max_x)-half_size))
         top_pad = math.ceil(abs(abs(min_y)-half_size))
         bottom_pad = math.ceil(abs(abs(max_y)-half_size))
-        print('prev_boxes')
-        print(boxes)
+
         boxes[:,0] += left_pad
         boxes[:,2] += left_pad
         boxes[:,1] += top_pad
         boxes[:,3] += top_pad
-        print('after_boxes')
-        print(boxes)
 
         padded_image = np.pad(resized_image,((top_pad,bottom_pad),(left_pad,right_pad),(0,0)),'edge')
         padded_h,padded_w = padded_image.shape[:2]
@@ -403,27 +426,40 @@ class MyImagesDataset:
         return rotated_image, boxes
 
     
-    def _getitem(self, index):
+    def _getitem(self, index, flag_rotate:bool=False):
+        init_image_size = self.init_image_size
+        final_image_size = self.final_image_size
+        
         image_info = self.data[index]
         image = self._read_image(image_info['image_id'])
         # duplicate boxes to prevent corruption of dataset
         # corner_points:np.ndarray = copy.copy(image_info['corner_points'])
         corner_points = image_info['corner_points'].astype(np.float64)
         # duplicate labels to prevent corruption of dataset
-        labels = copy.copy(image_info['labels'])
-        init_resize = 600
-        init_resize = 300
-        degree = 45
-        image, boxes = self._resize_and_rotate_with_corner_points(image,corner_points,init_resize,rotate_degree=degree)
+        labels = np.array(copy.copy(image_info['labels']))
 
+        if not flag_rotate:
+            degree = 0
+        else:
+            degree = 0
+            
+        image, boxes = self._resize_and_rotate_with_corner_points(image,corner_points,init_image_size,rotate_degree=degree)
+
+        if init_image_size != final_image_size:
+            image, boxes, labels = self.ToPercentCoords(image,boxes,labels)
+            image = cv2.resize(image,(final_image_size,final_image_size), interpolation=cv2.INTER_LANCZOS4)
+            image, boxes, labels = self.ToAbsoluteCoords(image,boxes,labels)
         if self.transform:
+            assert self.transform.size == final_image_size
             image, boxes, labels = self.transform(image, boxes, labels)
         if self.target_transform:
             boxes, labels = self.target_transform(boxes, labels)
         return image_info['image_id'], image, boxes, labels
 
     def __getitem__(self, index):
+
         _, image, boxes, labels = self._getitem(index)
+
         return image, boxes, labels
 
     def get_annotation(self, index):
@@ -433,35 +469,53 @@ class MyImagesDataset:
         return image_id, (boxes, labels, is_difficult)
 
     def get_image(self, index):
-        image_info = self.data[index]
-        image = self._read_image(image_info['image_id'])
+        # image_info = self.data[index]
+        # image = self._read_image(image_info['image_id'])
+        # if self.transform:
+        #     image, _ = self.transform(image)
+        image_id, image, boxes, labels = self._getitem(index)
         if self.transform:
-            image, _ = self.transform(image)
-        return image
+            image, _ = self.transform(image, boxes, labels)
+        return image_id,image, boxes, labels
 
-    def _read_data(self):
+    def _read_data(self, load_kind:str="no_crop"):
         if self.dataset_type == 'train':
-            annotation_file = r"C:\kwoncy\projects\xcode-detection\pytorch-ssd\jsons_pkl_datas\train_datas_25380_images.pkl"
+            # annotation_file = r"C:\kwoncy\projects\xcode-detection\pytorch-ssd\jsons_pkl_datas\train_datas_25380_images.pkl"
+            annotation_file_path = os.path.join(self.data_root,'train_datas_25380_images.pkl')
         elif self.dataset_type == 'val':
-            annotation_file = r"C:\kwoncy\projects\xcode-detection\pytorch-ssd\jsons_pkl_datas\val_datas_3172_images.pkl"
+            # annotation_file = r"C:\kwoncy\projects\xcode-detection\pytorch-ssd\jsons_pkl_datas\val_datas_3172_images.pkl"
+            annotation_file_path = os.path.join(self.data_root,'val_datas_3172_images.pkl')
         elif self.dataset_type == 'test':
-            annotation_file = r"C:\kwoncy\projects\xcode-detection\pytorch-ssd\jsons_pkl_datas\test_datas_3173_images.pkl"
+            # annotation_file = r"C:\kwoncy\projects\xcode-detection\pytorch-ssd\jsons_pkl_datas\test_datas_3173_images.pkl"
+            annotation_file_path = os.path.join(self.data_root,'test_datas_3173_images.pkl')
         
-        with open(annotation_file,'rb') as f:
+        if not os.path.exists(annotation_file_path):
+            raise Exception(f"from MyImagesDataset._read_data(): annotation_file not found (path:{annotation_file_path})")
+        
+        with open(annotation_file_path,'rb') as f:
             annotations = pkl.load(f)
-        
-        class_names  = ['background', "qrcode", "barcode", "mpcode", "pdf417", "dmtx"]
-        class_dict = {"qrcode":1, "barcode":2, "mpcode":3, "pdf417":4, "dmtx":5, "background": 0}
-        
-        ori_datas = annotations['original_datas']
-        crop_datas = annotations['crop_datas']
 
-        image_ids = ori_datas['image_ids']
-        corner_points = ori_datas['corner_points']
-        labels = ori_datas['labels']
-        difficulties = ori_datas['difficulties']
+        annotations['original_datas']['image_ids'] = list(map(lambda x: os.path.join(self.original_images_dir,x), annotations['original_datas']['image_ids']))
+        annotations['crop_datas']['image_ids'] = list(map(lambda x: os.path.join(self.crop_images_dir,x), annotations['crop_datas']['image_ids']))
+
+        if load_kind=="no_crop":
+            datas = annotations['original_datas']
+        elif load_kind=='crop':
+            datas = annotations['crop_datas']
+        elif load_kind=='both':
+            # datas = np.concatenate([annotations['original_datas'],annotations['crop_datas']],axis=0)
+            datas={}
+            datas['image_ids'] = annotations['original_datas']['image_ids'] + annotations['crop_datas']['image_ids']
+            datas['corner_points'] = list(annotations['original_datas']['corner_points']) + list(annotations['crop_datas']['corner_points'])
+            datas['labels'] = list(annotations['original_datas']['labels']) + list(annotations['crop_datas']['labels'])
+            datas['difficulties'] = list(annotations['original_datas']['difficulties']) + list(annotations['crop_datas']['difficulties'])
+            assert len(datas['image_ids']) == len(datas['corner_points']) == len(datas['labels']) == len(datas['difficulties'])
         
-        image_files_dir = self.original_images_dir
+        image_ids = datas['image_ids']
+        corner_points = datas['corner_points']
+        labels = datas['labels']
+        difficulties = datas['difficulties']
+
         data = []
         for image_id, corner_point, label_list in zip(image_ids, corner_points, labels):
             ## corner_point:list[dict]
@@ -474,7 +528,7 @@ class MyImagesDataset:
             for dict_ in corner_point:
                 corners.append([dict_['x1'],dict_['y1'],dict_['x2'],dict_['y2'],dict_['x3'],dict_['y3'],dict_['x4'],dict_['y4']])
             corners = np.array(corners,dtype=np.float64)
-            data.append({'image_id': os.path.join(image_files_dir,image_id),
+            data.append({'image_id': image_id,
                         'corner_points':corners,
                         'labels':label_list})
 
@@ -488,7 +542,7 @@ class MyImagesDataset:
         #         'labels': labels
         #     })
         
-        return data, class_names, class_dict
+        return data
 
     def __len__(self):
         return len(self.data)
@@ -535,21 +589,23 @@ class MyImagesDataset:
 
 
 if __name__ == '__main__':
-    # datasets = MyImagesDataset(root=None,
-    #             original_images_dir=r"C:\kwoncy\projects\xcode-detection\datas\xcode-new-datas",
-    #                             crop_images_dir=r"C:\kwoncy\projects\xcode-detection\datas\xcode-new-datas-with-small-and-crop-images-2")
-    config = mobilenetv1_ssd_config
-    train_transform = TrainAugmentation(config.image_size, config.image_mean, config.image_std)
-    target_transform = MatchPrior(config.priors, config.center_variance,
-                                  config.size_variance, 0.5)
+    
+    # config = mobilenetv1_ssd_config
+    # train_transform = TrainAugmentation(config.image_size, config.image_mean, config.image_std)
+    # target_transform = MatchPrior(config.priors, config.center_variance,
+    #                               config.size_variance, 0.5)
 
-    test_transform = TestTransform(config.image_size, config.image_mean, config.image_std)
+    # test_transform = TestTransform(config.image_size, config.image_mean, config.image_std)
 
-    datasets = OpenImagesDataset3(root=None,
-                                transform=train_transform, target_transform=target_transform,
-                                dataset_type='train',read_cross_dataset_path=r"C:\kwoncy\projects\xcode-detection\pytorch-ssd\jsons_crop")
-                
-    id, image, boxes, labels = datasets._getitem(160)
+    # datasets = OpenImagesDataset3(root=None,
+    #                             transform=train_transform, target_transform=target_transform,
+    #                             dataset_type='train',read_cross_dataset_path=r"C:\kwoncy\projects\xcode-detection\pytorch-ssd\jsons_crop")
+    datasets = MyImagesDataset(data_root=r"C:\kwoncy\projects\xcode-detection\pytorch-ssd\jsons_pkl_datas",
+                                original_images_dir=r"C:\kwoncy\projects\xcode-detection\datas\xcode-new-datas",
+                                crop_images_dir=r"C:\kwoncy\projects\xcode-detection\datas\xcode-new-datas-with-small-and-crop-images-2",
+                                init_image_size=600,
+                                final_image_size=600)
+    id, image, boxes, labels = datasets._getitem(180)
 
     print('image.shape: ',image.shape)
     print('boxes: ',boxes)
@@ -564,6 +620,6 @@ if __name__ == '__main__':
         image[y_min-5:y_min+5,x_min-5:x_min+5,:] = np.array([255,0,0])
         image[y_max-5:y_max+5,x_max-5:x_max+5,:] = [0,0,255]
     
-    cv2.imshow(f'{id}',image)
+    cv2.imshow(f'{id}',cv2.cvtColor(image,cv2.COLOR_RGB2BGR))
     cv2.waitKey(0)
     cv2.destroyAllWindows()

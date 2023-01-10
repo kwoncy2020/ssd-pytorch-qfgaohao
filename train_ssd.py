@@ -191,12 +191,12 @@ if __name__ == '__main__':
     args.datasets = [os.path.join(os.getcwd(),'jsons')]
     resume_model_path = None
     args.lr = 1e-7
-    # resume_model_path = r"C:\kwoncy\projects\xcode-detection\pytorch-ssd\checkpoint\mb2-ssd-lite-Epoch-550-Loss-1.781787894964218-opt-loss.pth.tar"
+    resume_model_path = r"C:\kwoncy\projects\xcode-detection\pytorch-ssd\checkpoint\mb2-ssd600-lite-Epoch-55-Loss-2.463419198989868-opt-loss.pth.tar"
     # args.resume = r"C:\kwoncy\projects\xcode-detection\pytorch-ssd\checkpoint\mobilenet-v1-ssd-mp-0_675.pth"
     # model_path = None
     # args.scheduler = None
     # args.base_net = r"C:\kwoncy\projects\xcode-detection\pytorch-ssd\checkpoint\mobilenet_v1_with_relu_69_5.pth"
-    args.base_net = r"C:\kwoncy\projects\xcode-detection\pytorch-ssd\checkpoint\pretrained\mb2-imagenet-71_8.pth"
+    # args.base_net = r"C:\kwoncy\projects\xcode-detection\pytorch-ssd\checkpoint\pretrained\mb2-imagenet-71_8.pth"
     args.num_epochs = 1800
     
     # args.net = 'mb3-small-ssd-lite'
@@ -406,7 +406,8 @@ if __name__ == '__main__':
             logging.fatal(f"Unsupported Scheduler: {args.scheduler}.")
             parser.print_help(sys.stderr)
             sys.exit(1)
-
+            
+    eval_path = os.path.join(os.getcwd(),'eval_results')
     logging.info(f"Start training from epoch {last_epoch + 1}.")
     for epoch in range(last_epoch + 1, args.num_epochs):
         # scheduler.step()
@@ -426,10 +427,11 @@ if __name__ == '__main__':
             tb_writer.add_scalar('regression_loss/val', val_regression_loss, epoch)
             tb_writer.add_scalar('classification_loss/val', val_classification_loss, epoch)
 
-            eval_path = os.path.join(os.getcwd(),'eval_results')
+            
             test_dataset = OpenImagesDataset3(os.path.join(os.getcwd(),'jsons'), dataset_type="test")
             class_names  = ['background', "qrcode", "barcode", "mpcode", "pdf417", "dmtx"]
             # make_predicted_txt(eval_path, test_dataset, class_names, model = net, pretrained_model_path=r"C:\kwoncy\projects\xcode-detection\pytorch-ssd\checkpoint\mb2-ssd-lite-with-weight-e75\mb2-ssd-lite-Epoch-75-Loss-3.0867494797706603.pth")
+            
             if epoch != 0:
                 make_predicted_txt(eval_path, test_dataset, class_names, model_state_dict=net.state_dict())
                 ap_dict = get_class_ap_dict(eval_path, test_dataset, class_names)
