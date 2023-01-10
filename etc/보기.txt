@@ -1,0 +1,171 @@
+https://techblog-history-younghunjo1.tistory.com/185 -- ssd 기초설명
+https://www.digitalocean.com/community/tutorials/python-xml-to-json-dict
+
+https://blog.naver.com/PostList.naver?blogId=dnjswns2280&from=postList&categoryNo=20 -- 리뷰들
+
+https://medium.com/invisible-insights/barcode-detection-using-deep-learning-techniques-1abde201df08 - ssd
+WWU, Artelab 바코드데이터
+---- 회전된 바운딩 박스가 필요함. 그냥 ssd 쓰면 문제가 발생할 수 있음.
+
+
+https://medium.com/@msmapark2/character-region-awareness-for-text-detection-craft-paper-%EB%B6%84%EC%84%9D-da987b32609c -craft 모델 분석
+https://medium.com/@msmapark2/craft-%EB%84%A4%EC%9D%B4%EB%B2%84%EC%9D%98-%EA%B8%80%EC%9E%90-%EC%B0%BE%EB%8A%94-ai-dca5e8aff007 -- craft 모델분석
+
+
+https://github.com/koljascasino/pyzbar-rotated --rotated barcode detection 약5년전 블러이미지에서 이슈가 있음 해결하려면 컴퓨팅자원 훨씬 더 사용
+https://ai.stackexchange.com/questions/9934/is-it-difficult-to-learn-the-rotated-bounding-box-for-a-rotated-object
+
+https://velog.io/@choonsik_mom/SSDSingle-Shot-Multibox-Detector%EB%A1%9C-%EB%AC%BC%EC%B2%B4-%EA%B0%90%EC%A7%80-%EA%B5%AC%ED%98%84 -- 구현
+
+https://gilberttanner.com/blog/object-detection-with-tensorflow-2/  --- tensorflow2
+
+https://github.com/sgrvinod/a-PyTorch-Tutorial-to-Object-Detection  --- ++++
+https://github.com/Jeffkang-94/pytorch-SSD300  --- +++ 위에 redesign
+https://better-tomorrow.tistory.com/entry/Tutorial-to-Object-Detection
+
+
+ --- tensorflow2.3 object detection api fine tuning
+https://modernflow.tistory.com/17 
+https://www.tensorflow.org/hub/tutorials/tf2_object_detection
+https://www.tensorflow.org/lite/examples/object_detection/overview 
+https://www.tensorflow.org/lite/guide/model_maker
+https://github.com/tensorflow/models/blob/master/research/object_detection/g3doc/tf2_detection_zoo.md
+
+-- ssd 공식?
+https://github.com/tensorflow/models/tree/master/research/object_detection/models
+https://github.com/qfgaohao/pytorch-ssd/tree/master/vision/ssd
+https://github.com/pytorch/vision
+https://paperswithcode.com/paper/searching-for-mobilenetv3 -- 참고
+https://arxiv.org/abs/1905.02244 -- mobilenet v3 paper  -- 224
+https://github.com/pytorch/vision/blob/main/torchvision/models/mobilenetv3.py   -- 224
+
+--ssd tutorial
+https://github.com/NVIDIA/DeepLearningExamples/blob/master/PyTorch/Detection/SSD/ssd/model.py
+https://github.com/NVIDIA/DeepLearningExamples/blob/cfdbf4eda13bafa6c56abd9d0f94aceb01280d55/PyTorch/Detection/SSD/ssd/utils.py#L438
+http://jany.st/post/2017-11-05-single-shot-detector-ssd-from-scratch-in-tensorflow.html -- tensorflow 용
+https://github.com/pytorch/vision/tree/main/references/detection#ssd300-vgg16
+
+
++++++  ssd 2년전
+https://github.com/sgrvinod/a-PyTorch-Tutorial-to-Object-Detection
+https://github.com/Jeffkang-94/pytorch-SSD300/blob/6cb6b3ce0cb98e3f5d2a9fa805cd9b9273a7714b/model.py#L537
+https://github.com/qfgaohao/pytorch-ssd/tree/master/vision/ssd
+
+---entropy 공식이해
+https://hyunw.kim/blog/2017/10/26/Cross_Entropy.html   +++
+
+
+--Anchor Box 설명
+https://www.mathworks.com/help/vision/ug/anchor-boxes-for-object-detection.html
+https://www.mathworks.com/help/vision/ug/estimate-anchor-boxes-from-training-data.html
+https://csm-kr.tistory.com/33
+https://csm-kr.tistory.com/13?category=1130013
+https://leedakyeong.tistory.com/entry/Object-Detection-YOLO-v1v6-%EB%B9%84%EA%B5%90 --박스 크기찾기 (k-means clustering))
+
+
+
+ --- detections
+https://jonathan-hui.medium.com/object-detection-speed-and-accuracy-comparison-faster-r-cnn-r-fcn-ssd-and-yolo-5425656ae359
+
+-- CRAFT pytorch
+https://github.com/clovaai/CRAFT-pytorch  --official
+https://cvml.tistory.com/19   -- tutorial
+
+--yolo7 reparameterization
+RepVGG-Making VGG-style ConvNets Great Again
+YOLOv7- Trainable bag-of-freebies sets new state-of-the-art for real-time object
+https://github.com/WongKinYiu/yolov7
+
+--yolo7 dynamic assignment label
+jimaging-08-00193
+OTA: Optimal Transport Assignment for Object Detection
+https://github.com/Megvii-BaseDetection/OTA
+
+
+--Reparameterization
+https://github.com/ChengpengChen/RepGhost   - RepGhost
+
+--GhostNet V1, V2
+https://github.com/huawei-noah/Efficient-AI-Backbones
+
+--Optimal Transport
+https://medium.com/analytics-vidhya/introduction-to-optimal-transport-fd1816d51086
+
+--yolox anchor free
+YOLOX: Exceeding YOLO Series in 2021
+
+--yolo 최신
+https://github.com/PaddlePaddle/PaddleDetection
+https://paperswithcode.com/paper/pp-yoloe-an-evolved-version-of-yolo
+
+https://github.com/tinyvision/damo-yolo
+https://paperswithcode.com/paper/damo-yolo-a-report-on-real-time-object
+
+
+--anchor free 역사
+https://blog.si-analytics.ai/72
+
+--ATSS
+https://github.com/sfzhang15/ATSS/tree/79dfb28bd18c931dd75a3ca2c63d32f5e4b1626a
+
+
+
+--ImageNet
+https://github.com/pytorch/examples/tree/main/imagenet
+
+
+--torchvision -- ImageNet 
+https://csm-kr.tistory.com/6
+https://seongkyun.github.io/others/2019/03/06/imagenet_dn/  -- ImageNet 압축해제
+
+--torch learning rate SGD 문제
+https://discuss.pytorch.org/t/how-does-sgd-weight-decay-work/33105
+
+-- openvino mb-yolo-v4
+https://docs.openvino.ai/latest/omz_models_model_mobilenet_yolo_v4_syg.html
+
+
+--MobileViT v1, v2, CVNets
+https://github.com/apple/ml-cvnets
+https://github.com/apple/ml-cvnets/blob/main/cvnets/modules/mobilevit_block.py
+
+--MobileViT v3
+https://velog.io/@yellofi/2022-arXiv-MobileViTv3-Mobile-Friendly-Vision-Transformer-with-Simple-and-Effective-Fusion-of-Local-Global-and-Input-Features
+
+
+
+--Loss function (CIOU, DIOU, GIOU)
+https://github.com/Zzh-tju/DIoU-SSD-pytorch/blob/master/utils/loss/multibox_loss.py
+
+
+--deformable convolution
+https://pypi.org/project/deform-conv2d-onnx-exporter/    -- onnx export offset 12버전 또는 그 이상 필요.
+https://pytorch.org/vision/stable/generated/torchvision.ops.deform_conv2d.html#torchvision.ops.deform_conv2d
+https://pytorch.org/vision/stable/_modules/torchvision/ops/deform_conv.html
+https://arxiv.org/abs/1703.06211  -- deformable convolution v1
+https://arxiv.org/abs/1811.11168  -- deformable convolution v2
+
+
+-- 분산학습
+https://medium.com/daangn/pytorch-multi-gpu-%ED%95%99%EC%8A%B5-%EC%A0%9C%EB%8C%80%EB%A1%9C-%ED%95%98%EA%B8%B0-27270617936b
+https://github.com/pytorch/examples/blob/main/imagenet/main.py
+
+
+--amp 사용예
+https://gaussian37.github.io/dl-pytorch-amp/
+https://pytorch.org/tutorials/recipes/recipes/amp_recipe.html
+https://github.com/pytorch/pytorch/issues/27595
+
+
+--속도비교
+https://paperswithcode.com/sota/real-time-object-detection-on-coco
+
+블로그들 
+yolo 시리즈 설명++ --  https://leedakyeong.tistory.com/entry/Object-Detection-YOLO-v1v6-%EB%B9%84%EA%B5%902
+onnx 및 각종 딥러닝 정보 --https://eehoeskrap.tistory.com/category/AI%20Development/ONNX
+onnx 및 tensorRT 비교+ -- https://seokhyun2.tistory.com/83
+
+레퍼런스 추출 팁
+https://phdkim.net/board/free/33029/
+
+
